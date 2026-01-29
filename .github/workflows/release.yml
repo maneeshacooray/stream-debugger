@@ -14,6 +14,9 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    # Use the environment where EXPO_TOKEN is stored (e.g. "production").
+    # If EXPO_TOKEN is a repository secret (not under an environment), remove this line.
+    environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +36,13 @@ jobs:
       - name: Get version
         id: version
         run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Check EXPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::EXPO_TOKEN secret is not set. Add it in repo Settings → Secrets and variables → Actions. Create a token at https://expo.dev/accounts/[username]/settings/access-tokens"
+            exit 1
+          fi
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
