@@ -45,8 +45,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "980be8ab-4388-493f-bdc1-a8520e93a714"
+        "projectId": "659f8c52-740f-490c-a3e0-b3b291e02f75"
       }
-    }
+    },
+    "owner": "maneesha_cooray"
   }
 }
