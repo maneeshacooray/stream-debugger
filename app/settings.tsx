@@ -370,6 +370,83 @@ const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetD
 });
 
 // ============================================================================
+// Import Modal Component
+// ============================================================================
+interface ImportModalProps {
+  visible: boolean;
+  onImport: (json: string) => Promise<void>;
+  onCancel: () => void;
+}
+
+function ImportModal({ visible, onImport, onCancel }: ImportModalProps) {
+  const [jsonText, setJsonText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setJsonText('');
+      setIsImporting(false);
+    }
+  }, [visible]);
+
+  const handleImport = async () => {
+    if (!jsonText.trim()) return;
+
+    setIsImporting(true);
+    try {
+      await onImport(jsonText);
+      onCancel();
+    } catch (error) {
+      // Error handling is done in parent
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>
+        <Text style={styles.modalTitle}>Import Streams</Text>
+        <Text style={styles.modalSubtitle}>
+          Paste the JSON data exported from another device.
+        </Text>
+
+        <TextInput
+          style={styles.modalInput}
+          value={jsonText}
+          onChangeText={setJsonText}
+          placeholder='{"streams": [...], "settings": {...}}'
+          placeholderTextColor={theme.text.muted}
+          multiline
+          numberOfLines={6}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <View style={styles.modalActions}>
+          <Pressable style={styles.modalCancelBtn} onPress={onCancel}>
+            <Text style={styles.modalCancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.modalImportBtn, (!jsonText.trim() || isImporting) && styles.modalBtnDisabled]}
+            onPress={handleImport}
+            disabled={!jsonText.trim() || isImporting}
+          >
+            {isImporting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.modalImportText}>Import</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ============================================================================
 // Settings Screen
 // ============================================================================
 export default function SettingsScreen() {
@@ -392,6 +469,7 @@ export default function SettingsScreen() {
 
   const [editingStream, setEditingStream] = useState<StreamConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Toggle stream in multi-view selection
   const toggleMultiViewStream = useCallback((streamId: string) => {
@@ -454,21 +532,14 @@ export default function SettingsScreen() {
     }
   }, [exportData]);
 
-  const handleImport = useCallback(() => {
-    Alert.prompt(
-      'Import Data',
-      'Paste your exported JSON data:',
-      async (text) => {
-        if (!text) return;
-        const result = await importData(text);
-        if (result.success) {
-          Alert.alert('Success', 'Data imported successfully');
-        } else {
-          Alert.alert('Error', result.error || 'Failed to import data');
-        }
-      },
-      'plain-text'
-    );
+  const handleImport = useCallback(async (jsonText: string) => {
+    const result = await importData(jsonText);
+    if (result.success) {
+      Alert.alert('Success', 'Data imported successfully');
+    } else {
+      Alert.alert('Error', result.error || 'Failed to import data');
+      throw new Error(result.error); // Re-throw to keep modal open if needed, or handle differently
+    }
   }, [importData]);
 
   const handleClearAll = useCallback(() => {
@@ -518,6 +589,12 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor={theme.bg.primary} />
+
+      <ImportModal
+        visible={showImportModal}
+        onImport={handleImport}
+        onCancel={() => setShowImportModal(false)}
+      />
 
       {/* Header */}
       <View style={styles.header}>
@@ -671,13 +748,11 @@ export default function SettingsScreen() {
               <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
             </Pressable>
 
-            {Platform.OS === 'ios' && (
-              <Pressable style={styles.actionItem} onPress={handleImport}>
-                <Ionicons name="download-outline" size={20} color={theme.text.secondary} />
-                <Text style={styles.actionText}>Import Streams</Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
-              </Pressable>
-            )}
+            <Pressable style={styles.actionItem} onPress={() => setShowImportModal(true)}>
+              <Ionicons name="download-outline" size={20} color={theme.text.secondary} />
+              <Text style={styles.actionText}>Import Streams</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+            </Pressable>
 
             <Pressable style={styles.actionItem} onPress={handleClearAll}>
               <Ionicons name="trash-outline" size={20} color={theme.accent.error} />
@@ -1222,5 +1297,78 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Modal Styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: theme.bg.card,
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.text.primary,
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: theme.text.secondary,
+    marginBottom: 16,
+  },
+  modalInput: {
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 8,
+    padding: 12,
+    color: theme.text.primary,
+    fontSize: 14,
+    height: 120,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: theme.bg.tertiary,
+  },
+  modalCancelText: {
+    color: theme.text.primary,
+    fontWeight: '600',
+  },
+  modalImportBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: theme.accent.primary,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  modalBtnDisabled: {
+    opacity: 0.5,
+  },
+  modalImportText: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
