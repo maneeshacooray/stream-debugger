@@ -18,6 +18,7 @@ export interface StreamSettings {
   defaultStreamId: string | null;
   multiViewStreamIds: string[];
   maxMultiViewStreams: number;
+  themeMode: 'system' | 'light' | 'dark';
 }
 
 /** Max streams allowed in multi-view mode (performance and layout). */
@@ -53,9 +54,11 @@ class StreamStorage {
     defaultStreamId: null,
     multiViewStreamIds: [],
     maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
+    themeMode: 'system',
   };
   private initialized = false;
   private initPromise: Promise<void> | null = null;
+  private listeners: Set<() => void> = new Set();
 
   // Initialize storage - loads from AsyncStorage or sets up defaults
   async initialize(): Promise<void> {
@@ -100,6 +103,19 @@ class StreamStorage {
       console.error('Failed to initialize stream storage:', error);
       this.initialized = true;
     }
+  }
+
+  // ============================================================================
+  // Reactivity
+  // ============================================================================
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private _notifyListeners(): void {
+    this.listeners.forEach(listener => listener());
   }
 
   // ============================================================================
@@ -234,6 +250,11 @@ class StreamStorage {
     await this._saveSettings();
   }
 
+  async setThemeMode(mode: 'system' | 'light' | 'dark'): Promise<void> {
+    this.settings.themeMode = mode;
+    await this._saveSettings();
+  }
+
   async toggleFavorite(id: string): Promise<boolean> {
     const stream = this.getStreamById(id);
     if (!stream) return false;
@@ -278,7 +299,8 @@ class StreamStorage {
     this.settings = {
       defaultStreamId: null,
       multiViewStreamIds: [],
-      maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS
+      maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
+      themeMode: 'system'
     };
     await Promise.all([
       AsyncStorage.removeItem(STORAGE_KEYS.STREAMS),
@@ -294,6 +316,7 @@ class StreamStorage {
   private async _saveStreams(): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.STREAMS, JSON.stringify(this.streams));
+      this._notifyListeners();
     } catch (error) {
       console.error('Failed to save streams:', error);
     }
@@ -302,6 +325,7 @@ class StreamStorage {
   private async _saveSettings(): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
+      this._notifyListeners();
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
@@ -321,6 +345,7 @@ export function useStreamConfig() {
     defaultStreamId: null,
     multiViewStreamIds: [],
     maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
+    themeMode: 'system',
   });
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -338,8 +363,18 @@ export function useStreamConfig() {
     };
 
     init();
+
+    // Subscribe to updates from other hooks/instances
+    const unsubscribe = streamStorage.subscribe(() => {
+      if (mounted) {
+        setStreams(streamStorage.getAllStreams());
+        setSettings(streamStorage.getSettings());
+      }
+    });
+
     return () => {
       mounted = false;
+      unsubscribe();
     };
   }, [refreshKey]);
 
@@ -416,6 +451,14 @@ export function useStreamConfig() {
     [refresh]
   );
 
+  const setThemeMode = useCallback(
+    async (mode: 'system' | 'light' | 'dark') => {
+      await streamStorage.setThemeMode(mode);
+      refresh();
+    },
+    [refresh]
+  );
+
   // Getters - depend on streams/settings state to return fresh data after updates
   const getDefaultStream = useCallback(() => {
     return streamStorage.getDefaultStream();
@@ -466,6 +509,7 @@ export function useStreamConfig() {
     setDefaultStream,
     setMultiViewStreams,
     setMaxMultiViewStreams,
+    setThemeMode,
     // Getters
     getDefaultStream,
     getFavoriteStreams,
