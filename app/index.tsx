@@ -1019,8 +1019,8 @@ export default function StreamDebugger() {
         </View>
       )}
 
-      {/* Scrollable Content Area - Hidden in Immersive */}
-      {!isImmersive && (
+      {/* Scrollable Content Area - Hidden in Immersive or Multiview */}
+      {!isImmersive && !multiViewMode && (
         <ScrollView
           ref={scrollRef}
           style={styles.scrollableContent}
