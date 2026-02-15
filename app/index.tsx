@@ -31,7 +31,7 @@ import { StreamMetadata } from '../components/StreamMetadata';
 
 // Theme & About
 import { ABOUT } from '../constants/about';
-import { categoryColors, logColors, theme } from '../constants/appTheme';
+import { categoryColors, logColors, Theme, useAppTheme } from '../constants/appTheme';
 
 // ============================================================================
 // Constants
@@ -64,9 +64,11 @@ interface LogEntryProps {
   isExpanded: boolean;
   onToggleExpand: (id: string) => void;
   onCopy: (log: LogEntry) => void;
+  theme: Theme;
 }
 
-const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpand, onCopy }: LogEntryProps) {
+const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpand, onCopy, theme }: LogEntryProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const isMultiline = log.message.includes('\n') || log.message.length > 80;
 
   const handlePress = useCallback(() => {
@@ -120,9 +122,11 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
 interface ZoomableVideoProps {
   player: any;
   enabled: boolean;
+  theme: Theme;
 }
 
-const ZoomableVideo = ({ player, enabled }: ZoomableVideoProps) => {
+const ZoomableVideo = ({ player, enabled, theme }: ZoomableVideoProps) => {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const scale = useSharedValue(1);
   const focalX = useSharedValue(0);
   const focalY = useSharedValue(0);
@@ -201,9 +205,11 @@ interface MultiViewPlayerProps {
   label: string;
   onLog?: (message: string, level: 'info' | 'error') => void;
   onPress?: () => void;
+  theme: Theme;
 }
 
-const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog, onPress }: MultiViewPlayerProps) {
+const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog, onPress, theme }: MultiViewPlayerProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const player = useVideoPlayer(streamUrl || null);
   const mountedRef = useRef(true);
   const loadStartRef = useRef(Date.now());
@@ -287,6 +293,7 @@ export default function StreamDebugger() {
   const {
     isLoading: isConfigLoading,
     streams,
+    settings,
     recordUsage,
     getDefaultStream,
     getFavoriteStreams,
@@ -294,6 +301,9 @@ export default function StreamDebugger() {
     getStreamById,
     refresh: refreshStreams,
   } = useStreamConfig();
+
+  const theme = useAppTheme(settings.themeMode);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   // Manage screen focus - pause player when leaving, resume when returning
   useFocusEffect(
@@ -819,7 +829,7 @@ export default function StreamDebugger() {
           <View style={isImmersive ? styles.playerCardImmersive : styles.playerCard}>
             <View style={isImmersive ? styles.videoWrapperImmersive : styles.videoWrapper}>
               {player && (
-                <ZoomableVideo player={player} enabled={isImmersive} />
+                <ZoomableVideo player={player} enabled={isImmersive} theme={theme} />
               )}
 
 
@@ -928,11 +938,12 @@ export default function StreamDebugger() {
               <View key={rowIndex} style={styles.multiViewRow}>
                 {row.map(stream => (
                   <MultiViewPlayer
-                    key={`${stream.id}-${multiViewReloadKey}`}
+                    key={stream.id}
                     streamUrl={stream.url}
                     label={stream.name}
                     onLog={handleMultiViewLog}
                     onPress={() => handleMultiViewPress(stream)}
+                    theme={theme}
                   />
                 ))}
               </View>
@@ -981,7 +992,7 @@ export default function StreamDebugger() {
           </View>
 
           {/* Stream Metadata / Playlist Viewer */}
-          <StreamMetadata streamUrl={streamUrl} />
+          <StreamMetadata streamUrl={streamUrl} theme={theme} />
 
           {/* Video Stats Panel */}
           <Pressable style={styles.videoStatsHeader} onPress={() => setShowStats(v => !v)}>
@@ -1140,7 +1151,7 @@ export default function StreamDebugger() {
 
                 {/* Device Stats */}
                 <View style={styles.deviceStatsContainer}>
-                  <DeviceStats />
+                  <DeviceStats theme={theme} />
                 </View>
               </View>
             )
@@ -1235,6 +1246,7 @@ export default function StreamDebugger() {
                     isExpanded={expandedLogs.has(log.id)}
                     onToggleExpand={toggleLogExpand}
                     onCopy={copyLog}
+                    theme={theme}
                   />
                 ))}
                 {filteredLogs.length > 100 && (
@@ -1257,7 +1269,10 @@ export default function StreamDebugger() {
 // ============================================================================
 // Styles
 // ============================================================================
-const styles = StyleSheet.create({
+// ============================================================================
+// Styles
+// ============================================================================
+const createStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.bg.primary,

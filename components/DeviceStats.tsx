@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Dimensions, PixelRatio, Platform, StyleSheet, Text, View } from 'react-native';
 
-import { monoFont, theme } from '../constants/appTheme';
+import { monoFont, Theme } from '../constants/appTheme';
 
 // ============================================================================
 // Types
@@ -27,7 +27,12 @@ interface PerformanceMetrics {
 // ============================================================================
 // Component
 // ============================================================================
-export const DeviceStats = memo(function DeviceStats() {
+interface DeviceStatsProps {
+  theme: Theme;
+}
+
+export const DeviceStats = memo(function DeviceStats({ theme }: DeviceStatsProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [metrics, setMetrics] = useState<PerformanceMetrics>({
     jsHeapSize: null,
@@ -161,7 +166,7 @@ export const DeviceStats = memo(function DeviceStats() {
 // ============================================================================
 // Styles
 // ============================================================================
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
   container: {
     backgroundColor: theme.bg.card,
     borderRadius: 8,

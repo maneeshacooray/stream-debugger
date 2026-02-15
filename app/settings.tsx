@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,30 +22,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MAX_MULTI_VIEW_STREAMS, StreamConfig, useStreamConfig } from '../config/streams';
 import { ABOUT } from '../constants/about';
+import { defaultTheme, Theme, useAppTheme } from '../constants/appTheme';
 
 // ============================================================================
 // Theme (matching main screen)
 // ============================================================================
-const theme = {
-  bg: {
-    primary: '#0a0a0f',
-    secondary: '#101018',
-    tertiary: '#18181f',
-    card: '#141420',
-  },
-  accent: {
-    primary: '#818cf8',
-    success: '#34d399',
-    warning: '#fbbf24',
-    error: '#f87171',
-  },
-  text: {
-    primary: '#f8fafc',
-    secondary: '#94a3b8',
-    muted: '#64748b',
-  },
-  border: '#252535',
-};
+// Theme imported from constants/appTheme
 
 // ============================================================================
 // Stream Editor Modal Component
@@ -55,9 +37,12 @@ interface StreamEditorProps {
   onSave: (name: string, url: string, isLive: boolean, isFavorite: boolean) => void;
   onCancel: () => void;
   onDelete?: () => void;
+  theme: Theme;
 }
 
-function StreamEditor({ stream, onSave, onCancel, onDelete }: StreamEditorProps) {
+function StreamEditor({ stream, onSave, onCancel, onDelete, theme }: StreamEditorProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [name, setName] = useState(stream?.name || '');
   const [url, setUrl] = useState(stream?.url || '');
   const [isLive, setIsLive] = useState<boolean>(stream?.isLive ?? false);
@@ -200,7 +185,7 @@ function StreamEditor({ stream, onSave, onCancel, onDelete }: StreamEditorProps)
           value={url}
           onChangeText={setUrl}
           placeholder="https://example.com/stream.m3u8"
-          placeholderTextColor={theme.text.muted}
+          placeholderTextColor={defaultTheme.text.muted}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
@@ -314,9 +299,11 @@ interface StreamItemProps {
   onPress: () => void;
   onSetDefault: () => void;
   onToggleFavorite: () => void;
+  theme: Theme;
 }
 
-const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite }: StreamItemProps) {
+const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite, theme }: StreamItemProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable style={styles.streamItem} onPress={onPress}>
       <View style={styles.streamItemLeft}>
@@ -376,9 +363,11 @@ interface ImportModalProps {
   visible: boolean;
   onImport: (json: string) => Promise<void>;
   onCancel: () => void;
+  theme: Theme;
 }
 
-function ImportModal({ visible, onImport, onCancel }: ImportModalProps) {
+function ImportModal({ visible, onImport, onCancel, theme }: ImportModalProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [jsonText, setJsonText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
@@ -447,10 +436,124 @@ function ImportModal({ visible, onImport, onCancel }: ImportModalProps) {
 }
 
 // ============================================================================
+// Theme Selector Component
+// ============================================================================
+interface ThemeSelectorProps {
+  currentMode: 'system' | 'light' | 'dark';
+  onSelectCallback: (mode: 'system' | 'light' | 'dark') => void;
+  theme: Theme;
+}
+
+function ThemeSelector({ currentMode, onSelectCallback, theme }: ThemeSelectorProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const options: { label: string; value: 'system' | 'light' | 'dark'; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { label: 'System', value: 'system', icon: 'settings-outline' },
+    { label: 'Light', value: 'light', icon: 'sunny-outline' },
+    { label: 'Dark', value: 'dark', icon: 'moon-outline' },
+  ];
+
+  return (
+    <View style={styles.themeSelectorContainer}>
+      <View style={styles.sectionHeader}>
+        <Ionicons name="color-palette-outline" size={18} color={theme.accent.primary} />
+        <Text style={styles.sectionTitle}>Appearance</Text>
+      </View>
+      <View style={styles.themeOptionsRow}>
+        {options.map((option) => {
+          const isSelected = currentMode === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              style={[
+                styles.themeOptionBtn,
+                isSelected && { backgroundColor: theme.accent.primary },
+              ]}
+              onPress={() => onSelectCallback(option.value)}
+            >
+              <Ionicons
+                name={option.icon}
+                size={20}
+                color={isSelected ? '#fff' : theme.text.secondary}
+              />
+              <Text
+                style={[
+                  styles.themeOptionLabel,
+                  isSelected && { color: '#fff', fontWeight: 'bold' },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ============================================================================
+// Tab Types and Configuration
+// ============================================================================
+type TabId = 'streams' | 'multiview' | 'appearance' | 'more';
+
+interface TabItem {
+  id: TabId;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}
+
+const TABS: TabItem[] = [
+  { id: 'streams', label: 'Streams', icon: 'play-circle-outline' },
+  { id: 'multiview', label: 'Multi-View', icon: 'grid-outline' },
+  { id: 'appearance', label: 'Appearance', icon: 'color-palette-outline' },
+  { id: 'more', label: 'More', icon: 'ellipsis-horizontal-outline' },
+];
+
+// ============================================================================
+// Tab Bar Component
+// ============================================================================
+interface TabBarProps {
+  activeTab: TabId;
+  onTabChange: (tab: TabId) => void;
+  theme: Theme;
+  bottomInset: number;
+}
+
+const TabBar = memo(function TabBar({ activeTab, onTabChange, theme, bottomInset }: TabBarProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
+  return (
+    <View style={[styles.tabBar, { paddingBottom: bottomInset }]}>
+      {TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        return (
+          <Pressable
+            key={tab.id}
+            style={[styles.tab, isActive && styles.tabActive]}
+            onPress={() => onTabChange(tab.id)}
+          >
+            <Ionicons
+              name={tab.icon}
+              size={22}
+              color={isActive ? theme.accent.primary : theme.text.muted}
+            />
+            <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+            {isActive && <View style={styles.tabIndicator} />}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+});
+
+// ============================================================================
 // Settings Screen
 // ============================================================================
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+
   const {
     isLoading,
     streams,
@@ -465,8 +568,13 @@ export default function SettingsScreen() {
     exportData,
     importData,
     clearAllData,
+    setThemeMode,
   } = useStreamConfig();
 
+  const theme = useAppTheme(settings.themeMode);
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
+  const [activeTab, setActiveTab] = useState<TabId>('streams');
   const [editingStream, setEditingStream] = useState<StreamConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -581,6 +689,7 @@ export default function SettingsScreen() {
             setIsAddingNew(false);
           }}
           onDelete={editingStream ? handleDeleteStream : undefined}
+          theme={theme}
         />
       </View>
     );
@@ -594,6 +703,7 @@ export default function SettingsScreen() {
         visible={showImportModal}
         onImport={handleImport}
         onCancel={() => setShowImportModal(false)}
+        theme={theme}
       />
 
       {/* Header */}
@@ -602,55 +712,59 @@ export default function SettingsScreen() {
           <Ionicons name="arrow-back" size={24} color={theme.text.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Settings</Text>
-        <Pressable style={styles.addBtn} onPress={() => setIsAddingNew(true)}>
-          <Ionicons name="add" size={24} color={theme.accent.primary} />
-        </Pressable>
+        <View style={styles.addBtn} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Streams Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="play-circle-outline" size={18} color={theme.accent.primary} />
-            <Text style={styles.sectionTitle}>Streams</Text>
-            <Text style={styles.sectionCount}>{streams.length}</Text>
-          </View>
+        {/* STREAMS TAB */}
+        {activeTab === 'streams' && (
+          <>
+            {/* Streams Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="play-circle-outline" size={18} color={theme.accent.primary} />
+                <Text style={styles.sectionTitle}>Streams</Text>
+                <Text style={styles.sectionCount}>{streams.length}</Text>
+              </View>
 
-          {streams.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="albums-outline" size={48} color={theme.text.muted} />
-              <Text style={styles.emptyText}>No streams configured</Text>
-              <Text style={styles.emptySubtext}>
-                Tap + to add your first stream
+              {streams.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="albums-outline" size={48} color={theme.text.muted} />
+                  <Text style={styles.emptyText}>No streams configured</Text>
+                  <Text style={styles.emptySubtext}>
+                    Tap + to add your first stream
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.streamList}>
+                  {streams.map(stream => (
+                    <StreamItem
+                      key={stream.id}
+                      stream={stream}
+                      isDefault={settings.defaultStreamId === stream.id}
+                      onPress={() => setEditingStream(stream)}
+                      onSetDefault={() => setDefaultStream(stream.id)}
+                      onToggleFavorite={() => toggleFavorite(stream.id)}
+                      theme={theme}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Quick Access Info */}
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={18} color={theme.accent.primary} />
+              <Text style={styles.infoText}>
+                Streams marked with a star appear in the quick access bar on the main screen.
+                The checkmark indicates the default stream that loads on startup.
               </Text>
             </View>
-          ) : (
-            <View style={styles.streamList}>
-              {streams.map(stream => (
-                <StreamItem
-                  key={stream.id}
-                  stream={stream}
-                  isDefault={settings.defaultStreamId === stream.id}
-                  onPress={() => setEditingStream(stream)}
-                  onSetDefault={() => setDefaultStream(stream.id)}
-                  onToggleFavorite={() => toggleFavorite(stream.id)}
-                />
-              ))}
-            </View>
-          )}
-        </View>
+          </>
+        )}
 
-        {/* Quick Access Info */}
-        <View style={styles.infoBox}>
-          <Ionicons name="information-circle-outline" size={18} color={theme.accent.primary} />
-          <Text style={styles.infoText}>
-            Streams marked with a star appear in the quick access bar on the main screen.
-            The checkmark indicates the default stream that loads on startup.
-          </Text>
-        </View>
-
-        {/* Multi-View Configuration */}
-        {streams.length > 0 && (
+        {/* MULTI-VIEW TAB */}
+        {activeTab === 'multiview' && streams.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Ionicons name="grid-outline" size={18} color={theme.accent.primary} />
@@ -728,57 +842,96 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        {/* Data Management Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="folder-outline" size={18} color={theme.accent.primary} />
-            <Text style={styles.sectionTitle}>Data Management</Text>
-          </View>
-
-          <View style={styles.actionList}>
-            <Pressable style={styles.actionItem} onPress={handleExport}>
-              <Ionicons name="share-outline" size={20} color={theme.text.secondary} />
-              <Text style={styles.actionText}>Export Streams</Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
-            </Pressable>
-
-            <Pressable style={styles.actionItem} onPress={() => setShowImportModal(true)}>
-              <Ionicons name="download-outline" size={20} color={theme.text.secondary} />
-              <Text style={styles.actionText}>Import Streams</Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
-            </Pressable>
-
-            <Pressable style={styles.actionItem} onPress={handleClearAll}>
-              <Ionicons name="trash-outline" size={20} color={theme.accent.error} />
-              <Text style={[styles.actionText, { color: theme.accent.error }]}>
-                Clear All Data
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
-            </Pressable>
-          </View>
-        </View>
-
-        {/* About / Developer Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="person-outline" size={18} color={theme.accent.primary} />
-            <Text style={styles.sectionTitle}>About</Text>
-          </View>
-          <View style={styles.aboutBox}>
-            <Text style={styles.aboutAppName}>
-              {Constants.expoConfig?.name ?? ABOUT.appName}
+        {activeTab === 'multiview' && streams.length === 0 && (
+          <View style={styles.emptyState}>
+            <Ionicons name="grid-outline" size={48} color={theme.text.muted} />
+            <Text style={styles.emptyText}>No streams available</Text>
+            <Text style={styles.emptySubtext}>
+              Add streams first to configure multi-view
             </Text>
-            <Text style={styles.aboutVersion}>
-              Version {Constants.expoConfig?.version ?? ABOUT.version}
-            </Text>
-            <Text style={styles.aboutDeveloper}>{ABOUT.developer}</Text>
-            <Text style={styles.aboutDescription}>{ABOUT.description}</Text>
           </View>
-        </View>
+        )}
 
-        {/* Bottom padding */}
-        <View style={{ height: insets.bottom + 20 }} />
+        {/* APPEARANCE TAB */}
+        {activeTab === 'appearance' && (
+          <View style={styles.section}>
+            <ThemeSelector
+              currentMode={settings.themeMode || 'system'}
+              onSelectCallback={setThemeMode}
+              theme={theme}
+            />
+          </View>
+        )}
+
+        {/* MORE TAB */}
+        {activeTab === 'more' && (
+          <>
+            {/* Data Management Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="folder-outline" size={18} color={theme.accent.primary} />
+                <Text style={styles.sectionTitle}>Data Management</Text>
+              </View>
+
+              <View style={styles.actionList}>
+                <Pressable style={styles.actionItem} onPress={handleExport}>
+                  <Ionicons name="share-outline" size={20} color={theme.text.secondary} />
+                  <Text style={styles.actionText}>Export Streams</Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+                </Pressable>
+
+                <Pressable style={styles.actionItem} onPress={() => setShowImportModal(true)}>
+                  <Ionicons name="download-outline" size={20} color={theme.text.secondary} />
+                  <Text style={styles.actionText}>Import Streams</Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+                </Pressable>
+
+                <Pressable style={styles.actionItem} onPress={handleClearAll}>
+                  <Ionicons name="trash-outline" size={20} color={theme.accent.error} />
+                  <Text style={[styles.actionText, { color: theme.accent.error }]}>
+                    Clear All Data
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+                </Pressable>
+              </View>
+            </View>
+
+            {/* About / Developer Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="person-outline" size={18} color={theme.accent.primary} />
+                <Text style={styles.sectionTitle}>About</Text>
+              </View>
+              <View style={styles.aboutBox}>
+                <Text style={styles.aboutAppName}>
+                  {Constants.expoConfig?.name ?? ABOUT.appName}
+                </Text>
+                <Text style={styles.aboutVersion}>
+                  Version {Constants.expoConfig?.version ?? ABOUT.version}
+                </Text>
+                <Text style={styles.aboutDeveloper}>{ABOUT.developer}</Text>
+                <Text style={styles.aboutDescription}>{ABOUT.description}</Text>
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* Bottom padding for tab bar */}
+        <View style={{ height: 80 }} />
       </ScrollView>
+
+      {/* Floating Action Button - Streams Tab Only */}
+      {activeTab === 'streams' && (
+        <Pressable
+          style={[styles.fab, { bottom: insets.bottom + 72 }]}
+          onPress={() => setIsAddingNew(true)}
+        >
+          <Ionicons name="add" size={28} color="#fff" />
+        </Pressable>
+      )}
+
+      {/* Tab Bar - Bottom Docked */}
+      <TabBar activeTab={activeTab} onTabChange={setActiveTab} theme={theme} bottomInset={insets.bottom} />
     </View>
   );
 }
@@ -786,10 +939,33 @@ export default function SettingsScreen() {
 // ============================================================================
 // Styles
 // ============================================================================
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.bg.primary,
+  },
+  themeSelectorContainer: {
+    marginBottom: 8,
+  },
+  themeOptionsRow: {
+    flexDirection: 'row',
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 8,
+    padding: 4,
+    marginTop: 12,
+  },
+  themeOptionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 6,
+  },
+  themeOptionLabel: {
+    fontSize: 14,
+    color: theme.text.secondary,
   },
   loadingContainer: {
     flex: 1,
@@ -819,6 +995,68 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     padding: 4,
+  },
+  // Tab Bar Styles - Bottom Docked
+  tabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    backgroundColor: theme.bg.card,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    paddingBottom: 0, // Will be set dynamically with safe area
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    gap: 2,
+    position: 'relative',
+  },
+  tabActive: {
+    // Active tab styling handled by indicator
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: theme.text.muted,
+  },
+  tabLabelActive: {
+    color: theme.accent.primary,
+    fontWeight: '600',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    right: 8,
+    height: 2,
+    backgroundColor: theme.accent.primary,
+    borderRadius: 2,
+  },
+  // Floating Action Button
+  fab: {
+    position: 'absolute',
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.accent.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   content: {
     flex: 1,
