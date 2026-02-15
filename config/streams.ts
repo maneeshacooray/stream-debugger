@@ -17,6 +17,7 @@ export interface StreamConfig {
 export interface StreamSettings {
   defaultStreamId: string | null;
   multiViewStreamIds: string[];
+  maxMultiViewStreams: number;
 }
 
 /** Max streams allowed in multi-view mode (performance and layout). */
@@ -51,6 +52,7 @@ class StreamStorage {
   private settings: StreamSettings = {
     defaultStreamId: null,
     multiViewStreamIds: [],
+    maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
   };
   private initialized = false;
   private initPromise: Promise<void> | null = null;
@@ -214,7 +216,21 @@ class StreamStorage {
   }
 
   async setMultiViewStreams(ids: string[]): Promise<void> {
-    this.settings.multiViewStreamIds = ids.filter(id => this.getStreamById(id));
+    // Ensure we don't exceed the current limit
+    const limit = this.settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+    const validIds = ids.filter(id => this.getStreamById(id));
+    this.settings.multiViewStreamIds = validIds.slice(0, limit);
+    await this._saveSettings();
+  }
+
+  async setMaxMultiViewStreams(max: number): Promise<void> {
+    this.settings.maxMultiViewStreams = max;
+
+    // Trim existing selection if it exceeds new limit
+    if (this.settings.multiViewStreamIds.length > max) {
+      this.settings.multiViewStreamIds = this.settings.multiViewStreamIds.slice(0, max);
+    }
+
     await this._saveSettings();
   }
 
@@ -258,7 +274,12 @@ class StreamStorage {
 
   async clearAllData(): Promise<void> {
     this.streams = [];
-    this.settings = { defaultStreamId: null, multiViewStreamIds: [] };
+    this.streams = [];
+    this.settings = {
+      defaultStreamId: null,
+      multiViewStreamIds: [],
+      maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS
+    };
     await Promise.all([
       AsyncStorage.removeItem(STORAGE_KEYS.STREAMS),
       AsyncStorage.removeItem(STORAGE_KEYS.SETTINGS),
@@ -299,6 +320,7 @@ export function useStreamConfig() {
   const [settings, setSettings] = useState<StreamSettings>({
     defaultStreamId: null,
     multiViewStreamIds: [],
+    maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
   });
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -386,6 +408,14 @@ export function useStreamConfig() {
     [refresh]
   );
 
+  const setMaxMultiViewStreams = useCallback(
+    async (max: number) => {
+      await streamStorage.setMaxMultiViewStreams(max);
+      refresh();
+    },
+    [refresh]
+  );
+
   // Getters - depend on streams/settings state to return fresh data after updates
   const getDefaultStream = useCallback(() => {
     return streamStorage.getDefaultStream();
@@ -435,6 +465,7 @@ export function useStreamConfig() {
     // Settings operations
     setDefaultStream,
     setMultiViewStreams,
+    setMaxMultiViewStreams,
     // Getters
     getDefaultStream,
     getFavoriteStreams,

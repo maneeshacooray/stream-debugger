@@ -4,19 +4,19 @@ import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Keyboard,
-    Platform,
-    Pressable,
-    ScrollView,
-    Share,
-    StatusBar,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -248,14 +248,16 @@ function StreamEditor({ stream, onSave, onCancel, onDelete }: StreamEditorProps)
             <View style={styles.previewStatusBar}>
               <View style={[
                 styles.previewStatusDot,
-                { backgroundColor: previewStatus === 'playing' ? theme.accent.success :
-                                   previewStatus === 'error' ? theme.accent.error :
-                                   theme.accent.warning }
+                {
+                  backgroundColor: previewStatus === 'playing' ? theme.accent.success :
+                    previewStatus === 'error' ? theme.accent.error :
+                      theme.accent.warning
+                }
               ]} />
               <Text style={styles.previewStatusLabel}>
                 {previewStatus === 'playing' ? 'Stream OK' :
-                 previewStatus === 'error' ? 'Stream Failed' :
-                 'Testing...'}
+                  previewStatus === 'error' ? 'Stream Failed' :
+                    'Testing...'}
               </Text>
             </View>
           </View>
@@ -368,6 +370,83 @@ const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetD
 });
 
 // ============================================================================
+// Import Modal Component
+// ============================================================================
+interface ImportModalProps {
+  visible: boolean;
+  onImport: (json: string) => Promise<void>;
+  onCancel: () => void;
+}
+
+function ImportModal({ visible, onImport, onCancel }: ImportModalProps) {
+  const [jsonText, setJsonText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setJsonText('');
+      setIsImporting(false);
+    }
+  }, [visible]);
+
+  const handleImport = async () => {
+    if (!jsonText.trim()) return;
+
+    setIsImporting(true);
+    try {
+      await onImport(jsonText);
+      onCancel();
+    } catch (error) {
+      // Error handling is done in parent
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>
+        <Text style={styles.modalTitle}>Import Streams</Text>
+        <Text style={styles.modalSubtitle}>
+          Paste the JSON data exported from another device.
+        </Text>
+
+        <TextInput
+          style={styles.modalInput}
+          value={jsonText}
+          onChangeText={setJsonText}
+          placeholder='{"streams": [...], "settings": {...}}'
+          placeholderTextColor={theme.text.muted}
+          multiline
+          numberOfLines={6}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <View style={styles.modalActions}>
+          <Pressable style={styles.modalCancelBtn} onPress={onCancel}>
+            <Text style={styles.modalCancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.modalImportBtn, (!jsonText.trim() || isImporting) && styles.modalBtnDisabled]}
+            onPress={handleImport}
+            disabled={!jsonText.trim() || isImporting}
+          >
+            {isImporting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.modalImportText}>Import</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ============================================================================
 // Settings Screen
 // ============================================================================
 export default function SettingsScreen() {
@@ -382,6 +461,7 @@ export default function SettingsScreen() {
     toggleFavorite,
     setDefaultStream,
     setMultiViewStreams,
+    setMaxMultiViewStreams,
     exportData,
     importData,
     clearAllData,
@@ -389,6 +469,7 @@ export default function SettingsScreen() {
 
   const [editingStream, setEditingStream] = useState<StreamConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Toggle stream in multi-view selection
   const toggleMultiViewStream = useCallback((streamId: string) => {
@@ -400,13 +481,24 @@ export default function SettingsScreen() {
       setMultiViewStreams(currentIds.filter(id => id !== streamId));
     } else {
       // Add to multi-view (max streams)
-      if (currentIds.length >= MAX_MULTI_VIEW_STREAMS) {
-        Alert.alert('Limit Reached', `You can select up to ${MAX_MULTI_VIEW_STREAMS} streams for multi-view mode.`);
+      const limit = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+      if (currentIds.length >= limit) {
+        Alert.alert('Limit Reached', `You can select up to ${limit} streams for multi-view mode.`);
         return;
       }
       setMultiViewStreams([...currentIds, streamId]);
     }
-  }, [settings.multiViewStreamIds, setMultiViewStreams]);
+  }, [settings.multiViewStreamIds, settings.maxMultiViewStreams, setMultiViewStreams]);
+
+  const handleIncrementLimit = useCallback(() => {
+    const current = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+    if (current < 16) setMaxMultiViewStreams(current + 1);
+  }, [settings.maxMultiViewStreams, setMaxMultiViewStreams]);
+
+  const handleDecrementLimit = useCallback(() => {
+    const current = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+    if (current > 1) setMaxMultiViewStreams(current - 1);
+  }, [settings.maxMultiViewStreams, setMaxMultiViewStreams]);
 
   const handleSaveStream = useCallback(
     async (name: string, url: string, isLive: boolean, isFavorite: boolean) => {
@@ -440,21 +532,14 @@ export default function SettingsScreen() {
     }
   }, [exportData]);
 
-  const handleImport = useCallback(() => {
-    Alert.prompt(
-      'Import Data',
-      'Paste your exported JSON data:',
-      async (text) => {
-        if (!text) return;
-        const result = await importData(text);
-        if (result.success) {
-          Alert.alert('Success', 'Data imported successfully');
-        } else {
-          Alert.alert('Error', result.error || 'Failed to import data');
-        }
-      },
-      'plain-text'
-    );
+  const handleImport = useCallback(async (jsonText: string) => {
+    const result = await importData(jsonText);
+    if (result.success) {
+      Alert.alert('Success', 'Data imported successfully');
+    } else {
+      Alert.alert('Error', result.error || 'Failed to import data');
+      throw new Error(result.error); // Re-throw to keep modal open if needed, or handle differently
+    }
   }, [importData]);
 
   const handleClearAll = useCallback(() => {
@@ -504,6 +589,12 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor={theme.bg.primary} />
+
+      <ImportModal
+        visible={showImportModal}
+        onImport={handleImport}
+        onCancel={() => setShowImportModal(false)}
+      />
 
       {/* Header */}
       <View style={styles.header}>
@@ -565,12 +656,33 @@ export default function SettingsScreen() {
               <Ionicons name="grid-outline" size={18} color={theme.accent.primary} />
               <Text style={styles.sectionTitle}>Multi-View Streams</Text>
               <Text style={styles.sectionCount}>
-                {settings.multiViewStreamIds?.length || 0}/{MAX_MULTI_VIEW_STREAMS}
+                {settings.multiViewStreamIds?.length || 0}/{settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS}
               </Text>
             </View>
 
+            <View style={styles.limitControl}>
+              <Text style={styles.limitLabel}>Max Streams Allowed</Text>
+              <View style={styles.limitStepper}>
+                <Pressable
+                  style={[styles.stepperBtn, (settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) <= 1 && styles.stepperBtnDisabled]}
+                  onPress={handleDecrementLimit}
+                  disabled={(settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) <= 1}
+                >
+                  <Ionicons name="remove" size={20} color={theme.text.primary} />
+                </Pressable>
+                <Text style={styles.limitValue}>{settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS}</Text>
+                <Pressable
+                  style={[styles.stepperBtn, (settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) >= 16 && styles.stepperBtnDisabled]}
+                  onPress={handleIncrementLimit}
+                  disabled={(settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) >= 16}
+                >
+                  <Ionicons name="add" size={20} color={theme.text.primary} />
+                </Pressable>
+              </View>
+            </View>
+
             <Text style={styles.multiViewDescription}>
-              Select up to {MAX_MULTI_VIEW_STREAMS} streams to display simultaneously in multi-view mode.
+              Select up to {settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS} streams to display simultaneously in multi-view mode.
             </Text>
 
             <View style={styles.multiViewList}>
@@ -636,13 +748,11 @@ export default function SettingsScreen() {
               <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
             </Pressable>
 
-            {Platform.OS === 'ios' && (
-              <Pressable style={styles.actionItem} onPress={handleImport}>
-                <Ionicons name="download-outline" size={20} color={theme.text.secondary} />
-                <Text style={styles.actionText}>Import Streams</Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
-              </Pressable>
-            )}
+            <Pressable style={styles.actionItem} onPress={() => setShowImportModal(true)}>
+              <Ionicons name="download-outline" size={20} color={theme.text.secondary} />
+              <Text style={styles.actionText}>Import Streams</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+            </Pressable>
 
             <Pressable style={styles.actionItem} onPress={handleClearAll}>
               <Ionicons name="trash-outline" size={20} color={theme.accent.error} />
@@ -802,7 +912,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.accent.error,
   },
   liveText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: theme.accent.error,
   },
@@ -813,9 +923,71 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   defaultText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: theme.accent.success,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: theme.bg.tertiary,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 24,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: theme.text.secondary,
+    lineHeight: 18,
+  },
+  multiViewDescription: {
+    fontSize: 13,
+    color: theme.text.secondary,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  limitControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.bg.card,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  limitLabel: {
+    fontSize: 15,
+    color: theme.text.primary,
+    fontWeight: '500',
+  },
+  limitStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 8,
+    padding: 4,
+  },
+  stepperBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.bg.card,
+    borderRadius: 6,
+  },
+  stepperBtnDisabled: {
+    opacity: 0.5,
+  },
+  limitValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text.primary,
+    width: 24,
+    textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -831,28 +1003,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.text.muted,
     marginTop: 4,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    backgroundColor: theme.bg.secondary,
-    borderRadius: 8,
-    padding: 12,
-    gap: 10,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 12,
-    color: theme.text.secondary,
-    lineHeight: 18,
-  },
-  // Multi-View styles
-  multiViewDescription: {
-    fontSize: 12,
-    color: theme.text.muted,
-    marginBottom: 12,
   },
   multiViewList: {
     gap: 8,
@@ -1147,5 +1297,78 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Modal Styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: theme.bg.card,
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.text.primary,
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: theme.text.secondary,
+    marginBottom: 16,
+  },
+  modalInput: {
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 8,
+    padding: 12,
+    color: theme.text.primary,
+    fontSize: 14,
+    height: 120,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: theme.bg.tertiary,
+  },
+  modalCancelText: {
+    color: theme.text.primary,
+    fontWeight: '600',
+  },
+  modalImportBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: theme.accent.primary,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  modalBtnDisabled: {
+    opacity: 0.5,
+  },
+  modalImportText: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
