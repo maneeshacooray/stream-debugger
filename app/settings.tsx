@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,30 +22,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MAX_MULTI_VIEW_STREAMS, StreamConfig, useStreamConfig } from '../config/streams';
 import { ABOUT } from '../constants/about';
+import { defaultTheme, Theme, useAppTheme } from '../constants/appTheme';
 
 // ============================================================================
 // Theme (matching main screen)
 // ============================================================================
-const theme = {
-  bg: {
-    primary: '#0a0a0f',
-    secondary: '#101018',
-    tertiary: '#18181f',
-    card: '#141420',
-  },
-  accent: {
-    primary: '#818cf8',
-    success: '#34d399',
-    warning: '#fbbf24',
-    error: '#f87171',
-  },
-  text: {
-    primary: '#f8fafc',
-    secondary: '#94a3b8',
-    muted: '#64748b',
-  },
-  border: '#252535',
-};
+// Theme imported from constants/appTheme
 
 // ============================================================================
 // Stream Editor Modal Component
@@ -55,9 +37,12 @@ interface StreamEditorProps {
   onSave: (name: string, url: string, isLive: boolean, isFavorite: boolean) => void;
   onCancel: () => void;
   onDelete?: () => void;
+  theme: Theme;
 }
 
-function StreamEditor({ stream, onSave, onCancel, onDelete }: StreamEditorProps) {
+function StreamEditor({ stream, onSave, onCancel, onDelete, theme }: StreamEditorProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [name, setName] = useState(stream?.name || '');
   const [url, setUrl] = useState(stream?.url || '');
   const [isLive, setIsLive] = useState<boolean>(stream?.isLive ?? false);
@@ -200,7 +185,7 @@ function StreamEditor({ stream, onSave, onCancel, onDelete }: StreamEditorProps)
           value={url}
           onChangeText={setUrl}
           placeholder="https://example.com/stream.m3u8"
-          placeholderTextColor={theme.text.muted}
+          placeholderTextColor={defaultTheme.text.muted}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
@@ -314,9 +299,11 @@ interface StreamItemProps {
   onPress: () => void;
   onSetDefault: () => void;
   onToggleFavorite: () => void;
+  theme: Theme;
 }
 
-const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite }: StreamItemProps) {
+const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite, theme }: StreamItemProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable style={styles.streamItem} onPress={onPress}>
       <View style={styles.streamItemLeft}>
@@ -376,9 +363,11 @@ interface ImportModalProps {
   visible: boolean;
   onImport: (json: string) => Promise<void>;
   onCancel: () => void;
+  theme: Theme;
 }
 
-function ImportModal({ visible, onImport, onCancel }: ImportModalProps) {
+function ImportModal({ visible, onImport, onCancel, theme }: ImportModalProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [jsonText, setJsonText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
@@ -447,10 +436,67 @@ function ImportModal({ visible, onImport, onCancel }: ImportModalProps) {
 }
 
 // ============================================================================
+// Theme Selector Component
+// ============================================================================
+interface ThemeSelectorProps {
+  currentMode: 'system' | 'light' | 'dark';
+  onSelectCallback: (mode: 'system' | 'light' | 'dark') => void;
+  theme: Theme;
+}
+
+function ThemeSelector({ currentMode, onSelectCallback, theme }: ThemeSelectorProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const options: { label: string; value: 'system' | 'light' | 'dark'; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { label: 'System', value: 'system', icon: 'settings-outline' },
+    { label: 'Light', value: 'light', icon: 'sunny-outline' },
+    { label: 'Dark', value: 'dark', icon: 'moon-outline' },
+  ];
+
+  return (
+    <View style={styles.themeSelectorContainer}>
+      <View style={styles.sectionHeader}>
+        <Ionicons name="color-palette-outline" size={18} color={theme.accent.primary} />
+        <Text style={styles.sectionTitle}>Appearance</Text>
+      </View>
+      <View style={styles.themeOptionsRow}>
+        {options.map((option) => {
+          const isSelected = currentMode === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              style={[
+                styles.themeOptionBtn,
+                isSelected && { backgroundColor: theme.accent.primary },
+              ]}
+              onPress={() => onSelectCallback(option.value)}
+            >
+              <Ionicons
+                name={option.icon}
+                size={20}
+                color={isSelected ? '#fff' : theme.text.secondary}
+              />
+              <Text
+                style={[
+                  styles.themeOptionLabel,
+                  isSelected && { color: '#fff', fontWeight: 'bold' },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ============================================================================
 // Settings Screen
 // ============================================================================
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+
   const {
     isLoading,
     streams,
@@ -465,7 +511,11 @@ export default function SettingsScreen() {
     exportData,
     importData,
     clearAllData,
+    setThemeMode,
   } = useStreamConfig();
+
+  const theme = useAppTheme(settings.themeMode);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [editingStream, setEditingStream] = useState<StreamConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
@@ -581,6 +631,7 @@ export default function SettingsScreen() {
             setIsAddingNew(false);
           }}
           onDelete={editingStream ? handleDeleteStream : undefined}
+          theme={theme}
         />
       </View>
     );
@@ -594,6 +645,7 @@ export default function SettingsScreen() {
         visible={showImportModal}
         onImport={handleImport}
         onCancel={() => setShowImportModal(false)}
+        theme={theme}
       />
 
       {/* Header */}
@@ -634,10 +686,20 @@ export default function SettingsScreen() {
                   onPress={() => setEditingStream(stream)}
                   onSetDefault={() => setDefaultStream(stream.id)}
                   onToggleFavorite={() => toggleFavorite(stream.id)}
+                  theme={theme}
                 />
               ))}
             </View>
           )}
+        </View>
+
+        {/* Theme Selection */}
+        <View style={styles.section}>
+          <ThemeSelector
+            currentMode={settings.themeMode || 'system'}
+            onSelectCallback={setThemeMode}
+            theme={theme}
+          />
         </View>
 
         {/* Quick Access Info */}
@@ -786,10 +848,33 @@ export default function SettingsScreen() {
 // ============================================================================
 // Styles
 // ============================================================================
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.bg.primary,
+  },
+  themeSelectorContainer: {
+    marginBottom: 8,
+  },
+  themeOptionsRow: {
+    flexDirection: 'row',
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 8,
+    padding: 4,
+    marginTop: 12,
+  },
+  themeOptionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 6,
+  },
+  themeOptionLabel: {
+    fontSize: 14,
+    color: theme.text.secondary,
   },
   loadingContainer: {
     flex: 1,

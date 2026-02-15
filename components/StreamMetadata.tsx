@@ -1,21 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
-import { theme } from '../constants/appTheme';
+import { Theme } from '../constants/appTheme';
 
 // ============================================================================
 // Types
 // ============================================================================
 interface StreamMetadataProps {
   streamUrl: string;
+  theme: Theme;
 }
 
 interface ParsedPlaylist {
@@ -209,7 +210,8 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
 // ============================================================================
 // Component
 // ============================================================================
-function StreamMetadataComponent({ streamUrl }: StreamMetadataProps) {
+function StreamMetadataComponent({ streamUrl, theme }: StreamMetadataProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [playlist, setPlaylist] = useState<ParsedPlaylist | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -494,7 +496,7 @@ export const StreamMetadata = memo(StreamMetadataComponent);
 // ============================================================================
 // Styles
 // ============================================================================
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
   container: {
     backgroundColor: theme.bg.card,
     borderRadius: 10,
