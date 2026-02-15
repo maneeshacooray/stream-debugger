@@ -492,6 +492,63 @@ function ThemeSelector({ currentMode, onSelectCallback, theme }: ThemeSelectorPr
 }
 
 // ============================================================================
+// Tab Types and Configuration
+// ============================================================================
+type TabId = 'streams' | 'multiview' | 'appearance' | 'more';
+
+interface TabItem {
+  id: TabId;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}
+
+const TABS: TabItem[] = [
+  { id: 'streams', label: 'Streams', icon: 'play-circle-outline' },
+  { id: 'multiview', label: 'Multi-View', icon: 'grid-outline' },
+  { id: 'appearance', label: 'Appearance', icon: 'color-palette-outline' },
+  { id: 'more', label: 'More', icon: 'ellipsis-horizontal-outline' },
+];
+
+// ============================================================================
+// Tab Bar Component
+// ============================================================================
+interface TabBarProps {
+  activeTab: TabId;
+  onTabChange: (tab: TabId) => void;
+  theme: Theme;
+  bottomInset: number;
+}
+
+const TabBar = memo(function TabBar({ activeTab, onTabChange, theme, bottomInset }: TabBarProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
+  return (
+    <View style={[styles.tabBar, { paddingBottom: bottomInset }]}>
+      {TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        return (
+          <Pressable
+            key={tab.id}
+            style={[styles.tab, isActive && styles.tabActive]}
+            onPress={() => onTabChange(tab.id)}
+          >
+            <Ionicons
+              name={tab.icon}
+              size={22}
+              color={isActive ? theme.accent.primary : theme.text.muted}
+            />
+            <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+            {isActive && <View style={styles.tabIndicator} />}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+});
+
+// ============================================================================
 // Settings Screen
 // ============================================================================
 export default function SettingsScreen() {
@@ -517,6 +574,7 @@ export default function SettingsScreen() {
   const theme = useAppTheme(settings.themeMode);
   const styles = useMemo(() => createStyles(theme), [theme]);
 
+  const [activeTab, setActiveTab] = useState<TabId>('streams');
   const [editingStream, setEditingStream] = useState<StreamConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -669,46 +727,41 @@ export default function SettingsScreen() {
                 <Text style={styles.sectionCount}>{streams.length}</Text>
               </View>
 
-          {streams.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="albums-outline" size={48} color={theme.text.muted} />
-              <Text style={styles.emptyText}>No streams configured</Text>
-              <Text style={styles.emptySubtext}>
-                Tap + to add your first stream
+              {streams.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="albums-outline" size={48} color={theme.text.muted} />
+                  <Text style={styles.emptyText}>No streams configured</Text>
+                  <Text style={styles.emptySubtext}>
+                    Tap + to add your first stream
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.streamList}>
+                  {streams.map(stream => (
+                    <StreamItem
+                      key={stream.id}
+                      stream={stream}
+                      isDefault={settings.defaultStreamId === stream.id}
+                      onPress={() => setEditingStream(stream)}
+                      onSetDefault={() => setDefaultStream(stream.id)}
+                      onToggleFavorite={() => toggleFavorite(stream.id)}
+                      theme={theme}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Quick Access Info */}
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={18} color={theme.accent.primary} />
+              <Text style={styles.infoText}>
+                Streams marked with a star appear in the quick access bar on the main screen.
+                The checkmark indicates the default stream that loads on startup.
               </Text>
             </View>
-          ) : (
-            <View style={styles.streamList}>
-              {streams.map(stream => (
-                <StreamItem
-                  key={stream.id}
-                  stream={stream}
-                  isDefault={settings.defaultStreamId === stream.id}
-                  onPress={() => setEditingStream(stream)}
-                  onSetDefault={() => setDefaultStream(stream.id)}
-                  onToggleFavorite={() => toggleFavorite(stream.id)}
-                  theme={theme}
-                />
-              ))}
-            </View>
-
-        {/* Theme Selection */}
-        <View style={styles.section}>
-          <ThemeSelector
-            currentMode={settings.themeMode || 'system'}
-            onSelectCallback={setThemeMode}
-            theme={theme}
-          />
-        </View>
-
-        {/* Quick Access Info */}
-        <View style={styles.infoBox}>
-          <Ionicons name="information-circle-outline" size={18} color={theme.accent.primary} />
-          <Text style={styles.infoText}>
-            Streams marked with a star appear in the quick access bar on the main screen.
-            The checkmark indicates the default stream that loads on startup.
-          </Text>
-        </View>
+          </>
+        )}
 
         {/* MULTI-VIEW TAB */}
         {activeTab === 'multiview' && streams.length > 0 && (
