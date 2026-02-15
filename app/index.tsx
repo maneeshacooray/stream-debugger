@@ -117,6 +117,62 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
 });
 
 // ============================================================================
+// Main Screen Tab Types and Configuration
+// ============================================================================
+type MainTabId = 'player' | 'info' | 'logs';
+
+interface MainTabItem {
+  id: MainTabId;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}
+
+const MAIN_TABS: MainTabItem[] = [
+  { id: 'player', label: 'Player', icon: 'play-circle-outline' },
+  { id: 'info', label: 'Info', icon: 'information-circle-outline' },
+  { id: 'logs', label: 'Logs', icon: 'list-outline' },
+];
+
+// ============================================================================
+// Main Tab Bar Component
+// ============================================================================
+interface MainTabBarProps {
+  activeTab: MainTabId;
+  onTabChange: (tab: MainTabId) => void;
+  theme: Theme;
+  bottomInset: number;
+}
+
+const MainTabBar = memo(function MainTabBar({ activeTab, onTabChange, theme, bottomInset }: MainTabBarProps) {
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
+  return (
+    <View style={[styles.mainTabBar, { paddingBottom: bottomInset }]}>
+      {MAIN_TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        return (
+          <Pressable
+            key={tab.id}
+            style={[styles.mainTab, isActive && styles.mainTabActive]}
+            onPress={() => onTabChange(tab.id)}
+          >
+            <Ionicons
+              name={tab.icon}
+              size={22}
+              color={isActive ? theme.accent.primary : theme.text.muted}
+            />
+            <Text style={[styles.mainTabLabel, isActive && styles.mainTabLabelActive]}>
+              {tab.label}
+            </Text>
+            {isActive && <View style={styles.mainTabIndicator} />}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+});
+
+// ============================================================================
 // Zoomable Video Component
 // ============================================================================
 interface ZoomableVideoProps {
@@ -341,6 +397,7 @@ export default function StreamDebugger() {
   const [multiViewReloadKey, setMultiViewReloadKey] = useState(0);
   const [networkStats, setNetworkStats] = useState<NetworkStats | null>(null);
   const [isImmersive, setIsImmersive] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<MainTabId>('player');
 
   // Get favorite streams for quick access bar - filter directly from streams state
   const favoriteStreams = useMemo(() => {
@@ -978,289 +1035,329 @@ export default function StreamDebugger() {
             </Pressable>
           )}
 
-          {/* Network Quality Indicator */}
-          <View style={styles.networkQualityRow}>
-            <NetworkQualityIndicator
-              bitrate={videoStats.videoTrack?.bitrate ?? null}
-              bufferedPosition={videoStats.bufferedPosition}
-              currentTime={videoStats.currentTime}
-              isPlaying={isPlaying}
-              isLive={videoStats.isLive}
-              latency={videoStats.currentOffsetFromLive}
-              onStatsUpdate={setNetworkStats}
-            />
-          </View>
+          {/* INFO TAB - Network Quality, Stream Metadata, Video Stats, Device Stats */}
+          {activeMainTab === 'info' && (
+            <>
+              {/* Network Quality Indicator */}
+              <View style={styles.networkQualityRow}>
+                <NetworkQualityIndicator
+                  bitrate={videoStats.videoTrack?.bitrate ?? null}
+                  bufferedPosition={videoStats.bufferedPosition}
+                  currentTime={videoStats.currentTime}
+                  isPlaying={isPlaying}
+                  isLive={videoStats.isLive}
+                  latency={videoStats.currentOffsetFromLive}
+                  onStatsUpdate={setNetworkStats}
+                />
+              </View>
 
-          {/* Stream Metadata / Playlist Viewer */}
-          <StreamMetadata streamUrl={streamUrl} theme={theme} />
+              {/* Stream Metadata / Playlist Viewer */}
+              <StreamMetadata streamUrl={streamUrl} theme={theme} />
 
-          {/* Video Stats Panel */}
-          <Pressable style={styles.videoStatsHeader} onPress={() => setShowStats(v => !v)}>
-            <View style={styles.videoStatsHeaderLeft}>
-              <Ionicons name="analytics-outline" size={16} color={theme.accent.primary} />
-              <Text style={styles.videoStatsTitle}>Video Stats</Text>
-              {videoStats.isLive && (
-                <View style={styles.liveBadge}>
-                  <View style={styles.liveDotSmall} />
-                  <Text style={styles.liveBadgeText}>LIVE</Text>
-                </View>
-              )}
-            </View>
-            <Ionicons name={showStats ? 'chevron-up' : 'chevron-down'} size={16} color={theme.text.secondary} />
-          </Pressable>
-
-          {
-            showStats && (
-              <View style={styles.videoStatsPanelInline}>
-                {/* Time & Progress Row */}
-                <View style={styles.videoStatsRow}>
-                  <View style={styles.videoStatBox}>
-                    <Text style={styles.videoStatLabel}>Current Time</Text>
-                    <Text style={styles.videoStatValue}>{formatTime(videoStats.currentTime)}</Text>
-                  </View>
-                  <View style={styles.videoStatBox}>
-                    <Text style={styles.videoStatLabel}>Duration</Text>
-                    <Text style={styles.videoStatValue}>{videoStats.duration > 0 ? formatTime(videoStats.duration) : '--:--'}</Text>
-                  </View>
-                  <View style={styles.videoStatBox}>
-                    <Text style={styles.videoStatLabel}>Buffered</Text>
-                    <Text style={styles.videoStatValue}>{formatTime(videoStats.bufferedPosition)}</Text>
-                  </View>
-                </View>
-
-                {/* Live Stats Row (only shown for live streams) */}
-                {videoStats.isLive && (
-                  <View style={styles.videoStatsRow}>
-                    <View style={styles.videoStatBox}>
-                      <Text style={styles.videoStatLabel}>Latency</Text>
-                      <Text style={[styles.videoStatValue, { color: theme.accent.warning }]}>
-                        {videoStats.currentOffsetFromLive !== null ? `${videoStats.currentOffsetFromLive.toFixed(1)}s` : '--'}
-                      </Text>
+              {/* Video Stats Panel */}
+              <Pressable style={styles.videoStatsHeader} onPress={() => setShowStats(v => !v)}>
+                <View style={styles.videoStatsHeaderLeft}>
+                  <Ionicons name="analytics-outline" size={16} color={theme.accent.primary} />
+                  <Text style={styles.videoStatsTitle}>Video Stats</Text>
+                  {videoStats.isLive && (
+                    <View style={styles.liveBadge}>
+                      <View style={styles.liveDotSmall} />
+                      <Text style={styles.liveBadgeText}>LIVE</Text>
                     </View>
-                    <View style={[styles.videoStatBox, { flex: 2 }]}>
-                      <Text style={styles.videoStatLabel}>Buffer Ahead</Text>
-                      <Text style={styles.videoStatValue}>
-                        {(videoStats.bufferedPosition - videoStats.currentTime).toFixed(1)}s
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                  )}
+                </View>
+                <Ionicons name={showStats ? 'chevron-up' : 'chevron-down'} size={16} color={theme.text.secondary} />
+              </Pressable>
 
-                {/* Codec & Resolution Row */}
-                {videoStats.videoTrack && (
-                  <View style={styles.videoStatsRow}>
-                    <View style={[styles.videoStatBox, styles.codecBox]}>
-                      <Text style={styles.videoStatLabel}>Codec</Text>
-                      <View style={styles.codecBadgeRow}>
-                        <View style={[styles.codecBadge, { backgroundColor: parseCodecName(videoStats.videoTrack.mimeType).color + '25', borderColor: parseCodecName(videoStats.videoTrack.mimeType).color }]}>
-                          <Text style={[styles.codecBadgeText, { color: parseCodecName(videoStats.videoTrack.mimeType).color }]}>
-                            {parseCodecName(videoStats.videoTrack.mimeType).name}
+              {
+                showStats && (
+                  <View style={styles.videoStatsPanelInline}>
+                    {/* Time & Progress Row */}
+                    <View style={styles.videoStatsRow}>
+                      <View style={styles.videoStatBox}>
+                        <Text style={styles.videoStatLabel}>Current Time</Text>
+                        <Text style={styles.videoStatValue}>{formatTime(videoStats.currentTime)}</Text>
+                      </View>
+                      <View style={styles.videoStatBox}>
+                        <Text style={styles.videoStatLabel}>Duration</Text>
+                        <Text style={styles.videoStatValue}>{videoStats.duration > 0 ? formatTime(videoStats.duration) : '--:--'}</Text>
+                      </View>
+                      <View style={styles.videoStatBox}>
+                        <Text style={styles.videoStatLabel}>Buffered</Text>
+                        <Text style={styles.videoStatValue}>{formatTime(videoStats.bufferedPosition)}</Text>
+                      </View>
+                    </View>
+
+                    {/* Live Stats Row (only shown for live streams) */}
+                    {videoStats.isLive && (
+                      <View style={styles.videoStatsRow}>
+                        <View style={styles.videoStatBox}>
+                          <Text style={styles.videoStatLabel}>Latency</Text>
+                          <Text style={[styles.videoStatValue, { color: theme.accent.warning }]}>
+                            {videoStats.currentOffsetFromLive !== null ? `${videoStats.currentOffsetFromLive.toFixed(1)}s` : '--'}
+                          </Text>
+                        </View>
+                        <View style={[styles.videoStatBox, { flex: 2 }]}>
+                          <Text style={styles.videoStatLabel}>Buffer Ahead</Text>
+                          <Text style={styles.videoStatValue}>
+                            {(videoStats.bufferedPosition - videoStats.currentTime).toFixed(1)}s
                           </Text>
                         </View>
                       </View>
-                    </View>
-                    <View style={styles.videoStatBox}>
-                      <Text style={styles.videoStatLabel}>Resolution</Text>
-                      <Text style={styles.videoStatValue}>
-                        {videoStats.videoTrack.width}x{videoStats.videoTrack.height}
-                      </Text>
-                    </View>
-                    <View style={styles.videoStatBox}>
-                      <Text style={styles.videoStatLabel}>FPS</Text>
-                      <Text style={styles.videoStatValue}>
-                        {videoStats.videoTrack.frameRate?.toFixed(1) ?? '--'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                    )}
 
-                {/* Bitrate & Quality Row */}
-                {videoStats.videoTrack && (
-                  <View style={styles.videoStatsRow}>
-                    <View style={styles.videoStatBox}>
-                      <Text style={styles.videoStatLabel}>Bitrate</Text>
-                      <Text style={styles.videoStatValue}>
-                        {videoStats.videoTrack.bitrate
-                          ? `${(videoStats.videoTrack.bitrate / 1000000).toFixed(2)} Mbps`
-                          : '--'}
-                      </Text>
-                    </View>
-                    <View style={styles.videoStatBox}>
-                      <Text style={styles.videoStatLabel}>Quality</Text>
-                      <Text style={styles.videoStatValue}>
-                        {videoStats.videoTrack.height >= 2160 ? '4K UHD' :
-                          videoStats.videoTrack.height >= 1440 ? '1440p QHD' :
-                            videoStats.videoTrack.height >= 1080 ? '1080p FHD' :
-                              videoStats.videoTrack.height >= 720 ? '720p HD' :
-                                videoStats.videoTrack.height >= 480 ? '480p SD' :
-                                  `${videoStats.videoTrack.height}p`}
-                      </Text>
-                    </View>
-                    <View style={styles.videoStatBox}>
-                      <Text style={styles.videoStatLabel}>Aspect</Text>
-                      <Text style={styles.videoStatValue}>
-                        {(videoStats.videoTrack.width / videoStats.videoTrack.height).toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                    {/* Codec & Resolution Row */}
+                    {videoStats.videoTrack && (
+                      <View style={styles.videoStatsRow}>
+                        <View style={[styles.videoStatBox, styles.codecBox]}>
+                          <Text style={styles.videoStatLabel}>Codec</Text>
+                          <View style={styles.codecBadgeRow}>
+                            <View style={[styles.codecBadge, { backgroundColor: parseCodecName(videoStats.videoTrack.mimeType).color + '25', borderColor: parseCodecName(videoStats.videoTrack.mimeType).color }]}>
+                              <Text style={[styles.codecBadgeText, { color: parseCodecName(videoStats.videoTrack.mimeType).color }]}>
+                                {parseCodecName(videoStats.videoTrack.mimeType).name}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                        <View style={styles.videoStatBox}>
+                          <Text style={styles.videoStatLabel}>Resolution</Text>
+                          <Text style={styles.videoStatValue}>
+                            {videoStats.videoTrack.width}x{videoStats.videoTrack.height}
+                          </Text>
+                        </View>
+                        <View style={styles.videoStatBox}>
+                          <Text style={styles.videoStatLabel}>FPS</Text>
+                          <Text style={styles.videoStatValue}>
+                            {videoStats.videoTrack.frameRate?.toFixed(1) ?? '--'}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
 
-                {/* Full Codec Info Row */}
-                {videoStats.videoTrack?.mimeType && (
-                  <View style={styles.videoStatsRow}>
-                    <View style={[styles.videoStatBox, { flex: 1 }]}>
-                      <Text style={styles.videoStatLabel}>Full Codec</Text>
-                      <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
-                        {parseCodecName(videoStats.videoTrack.mimeType).fullName} - {videoStats.videoTrack.mimeType}
-                      </Text>
+                    {/* Bitrate & Quality Row */}
+                    {videoStats.videoTrack && (
+                      <View style={styles.videoStatsRow}>
+                        <View style={styles.videoStatBox}>
+                          <Text style={styles.videoStatLabel}>Bitrate</Text>
+                          <Text style={styles.videoStatValue}>
+                            {videoStats.videoTrack.bitrate
+                              ? `${(videoStats.videoTrack.bitrate / 1000000).toFixed(2)} Mbps`
+                              : '--'}
+                          </Text>
+                        </View>
+                        <View style={styles.videoStatBox}>
+                          <Text style={styles.videoStatLabel}>Quality</Text>
+                          <Text style={styles.videoStatValue}>
+                            {videoStats.videoTrack.height >= 2160 ? '4K UHD' :
+                              videoStats.videoTrack.height >= 1440 ? '1440p QHD' :
+                                videoStats.videoTrack.height >= 1080 ? '1080p FHD' :
+                                  videoStats.videoTrack.height >= 720 ? '720p HD' :
+                                    videoStats.videoTrack.height >= 480 ? '480p SD' :
+                                      `${videoStats.videoTrack.height}p`}
+                          </Text>
+                        </View>
+                        <View style={styles.videoStatBox}>
+                          <Text style={styles.videoStatLabel}>Aspect</Text>
+                          <Text style={styles.videoStatValue}>
+                            {(videoStats.videoTrack.width / videoStats.videoTrack.height).toFixed(2)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Full Codec Info Row */}
+                    {videoStats.videoTrack?.mimeType && (
+                      <View style={styles.videoStatsRow}>
+                        <View style={[styles.videoStatBox, { flex: 1 }]}>
+                          <Text style={styles.videoStatLabel}>Full Codec</Text>
+                          <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
+                            {parseCodecName(videoStats.videoTrack.mimeType).fullName} - {videoStats.videoTrack.mimeType}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Playback Row */}
+                    <View style={styles.videoStatsRow}>
+                      <View style={styles.videoStatBox}>
+                        <Text style={styles.videoStatLabel}>Speed</Text>
+                        <Text style={styles.videoStatValue}>{videoStats.playbackRate}x</Text>
+                      </View>
+                      <View style={styles.videoStatBox}>
+                        <Text style={styles.videoStatLabel}>Volume</Text>
+                        <Text style={styles.videoStatValue}>{Math.round(videoStats.volume * 100)}%</Text>
+                      </View>
+                      <View style={styles.videoStatBox}>
+                        <Text style={styles.videoStatLabel}>Muted</Text>
+                        <Ionicons
+                          name={videoStats.muted ? 'volume-mute' : 'volume-high'}
+                          size={16}
+                          color={videoStats.muted ? theme.accent.error : theme.accent.success}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Audio Track Row */}
+                    {videoStats.audioTrack && (
+                      <View style={styles.videoStatsRow}>
+                        <View style={[styles.videoStatBox, { flex: 1 }]}>
+                          <Text style={styles.videoStatLabel}>Audio</Text>
+                          <Text style={styles.videoStatValue}>
+                            {videoStats.audioTrack.label} ({videoStats.audioTrack.language})
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Device Stats */}
+                    <View style={styles.deviceStatsContainer}>
+                      <DeviceStats theme={theme} />
                     </View>
                   </View>
-                )}
+                )
+              }
+            </>
+          )}
 
-                {/* Playback Row */}
-                <View style={styles.videoStatsRow}>
-                  <View style={styles.videoStatBox}>
-                    <Text style={styles.videoStatLabel}>Speed</Text>
-                    <Text style={styles.videoStatValue}>{videoStats.playbackRate}x</Text>
-                  </View>
-                  <View style={styles.videoStatBox}>
-                    <Text style={styles.videoStatLabel}>Volume</Text>
-                    <Text style={styles.videoStatValue}>{Math.round(videoStats.volume * 100)}%</Text>
-                  </View>
-                  <View style={styles.videoStatBox}>
-                    <Text style={styles.videoStatLabel}>Muted</Text>
-                    <Ionicons
-                      name={videoStats.muted ? 'volume-mute' : 'volume-high'}
-                      size={16}
-                      color={videoStats.muted ? theme.accent.error : theme.accent.success}
-                    />
-                  </View>
+          {/* LOGS TAB - Category Tabs, Log Controls, Logs List */}
+          {activeMainTab === 'logs' && (
+            <>
+              {/* Stats Bar */}
+              <View style={styles.statsBar}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{logStats.total}</Text>
+                  <Text style={styles.statLabel}>Total</Text>
                 </View>
-
-                {/* Audio Track Row */}
-                {videoStats.audioTrack && (
-                  <View style={styles.videoStatsRow}>
-                    <View style={[styles.videoStatBox, { flex: 1 }]}>
-                      <Text style={styles.videoStatLabel}>Audio</Text>
-                      <Text style={styles.videoStatValue}>
-                        {videoStats.audioTrack.label} ({videoStats.audioTrack.language})
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                {/* Device Stats */}
-                <View style={styles.deviceStatsContainer}>
-                  <DeviceStats theme={theme} />
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: theme.accent.error }]}>{logStats.error}</Text>
+                  <Text style={styles.statLabel}>Errors</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: theme.accent.warning }]}>{logStats.warn}</Text>
+                  <Text style={styles.statLabel}>Warns</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: theme.accent.info }]}>{logStats.info}</Text>
+                  <Text style={styles.statLabel}>Info</Text>
                 </View>
               </View>
-            )
-          }
 
-          {/* Stats Bar */}
-          <View style={styles.statsBar}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{logStats.total}</Text>
-              <Text style={styles.statLabel}>Total</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: theme.accent.error }]}>{logStats.error}</Text>
-              <Text style={styles.statLabel}>Errors</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: theme.accent.warning }]}>{logStats.warn}</Text>
-              <Text style={styles.statLabel}>Warns</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: theme.accent.info }]}>{logStats.info}</Text>
-              <Text style={styles.statLabel}>Info</Text>
-            </View>
-          </View>
-
-          {/* Category Tabs */}
-          <View style={styles.categoryTabs}>
-            {renderCategoryTab('all', 'All')}
-            {renderCategoryTab('http', 'HTTP')}
-            {renderCategoryTab('player', 'Player')}
-            {renderCategoryTab('system', 'System')}
-          </View>
-
-          {/* Log Controls */}
-          <View style={styles.logControls}>
-            <View style={styles.filterRow}>
-              <Ionicons name="search" size={16} color={theme.text.muted} />
-              <TextInput
-                style={styles.filterInput}
-                placeholder="Filter logs..."
-                placeholderTextColor={theme.text.muted}
-                value={filter}
-                onChangeText={setFilter}
-              />
-              {filter !== '' && (
-                <Pressable onPress={() => setFilter('')}>
-                  <Ionicons name="close-circle" size={18} color={theme.text.muted} />
-                </Pressable>
-              )}
-            </View>
-            <View style={styles.logActions}>
-              <Pressable
-                style={[styles.autoScrollBtn, autoScroll && styles.autoScrollBtnActive]}
-                onPress={() => setAutoScroll(v => !v)}
-              >
-                <Ionicons
-                  name={autoScroll ? 'play' : 'pause'}
-                  size={12}
-                  color={autoScroll ? theme.accent.success : theme.text.muted}
-                />
-                <Text style={[styles.autoScrollText, autoScroll && styles.autoScrollTextActive]}>
-                  {autoScroll ? 'Following' : 'Paused'}
-                </Text>
-              </Pressable>
-              <Pressable style={styles.actionBtn} onPress={exportLogs}>
-                <Ionicons name="share-outline" size={16} color={theme.text.secondary} />
-              </Pressable>
-              <Pressable style={styles.actionBtn} onPress={clearLogs}>
-                <Ionicons name="trash-outline" size={16} color={theme.accent.error} />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Logs - Limited render for performance */}
-          {
-            filteredLogs.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
-                <Text style={styles.emptyText}>No logs yet</Text>
-                <Text style={styles.emptySubtext}>Load a stream to start debugging</Text>
+              {/* Category Tabs */}
+              <View style={styles.categoryTabs}>
+                {renderCategoryTab('all', 'All')}
+                {renderCategoryTab('http', 'HTTP')}
+                {renderCategoryTab('player', 'Player')}
+                {renderCategoryTab('system', 'System')}
               </View>
-            ) : (
-              <View style={styles.logsInline}>
-                {/* Only render last 100 logs for performance, full list available via export */}
-                {filteredLogs.slice(-100).map(log => (
-                  <LogEntryItem
-                    key={log.id}
-                    log={log}
-                    isExpanded={expandedLogs.has(log.id)}
-                    onToggleExpand={toggleLogExpand}
-                    onCopy={copyLog}
-                    theme={theme}
+
+              {/* Log Controls */}
+              <View style={styles.logControls}>
+                <View style={styles.filterRow}>
+                  <Ionicons name="search" size={16} color={theme.text.muted} />
+                  <TextInput
+                    style={styles.filterInput}
+                    placeholder="Filter logs..."
+                    placeholderTextColor={theme.text.muted}
+                    value={filter}
+                    onChangeText={setFilter}
                   />
-                ))}
-                {filteredLogs.length > 100 && (
-                  <Text style={styles.logsHiddenText}>
-                    {filteredLogs.length - 100} older logs hidden (export to see all)
-                  </Text>
-                )}
+                  {filter !== '' && (
+                    <Pressable onPress={() => setFilter('')}>
+                      <Ionicons name="close-circle" size={18} color={theme.text.muted} />
+                    </Pressable>
+                  )}
+                </View>
+                <View style={styles.logActions}>
+                  <Pressable
+                    style={[styles.autoScrollBtn, autoScroll && styles.autoScrollBtnActive]}
+                    onPress={() => setAutoScroll(v => !v)}
+                  >
+                    <Ionicons
+                      name={autoScroll ? 'play' : 'pause'}
+                      size={12}
+                      color={autoScroll ? theme.accent.success : theme.text.muted}
+                    />
+                    <Text style={[styles.autoScrollText, autoScroll && styles.autoScrollTextActive]}>
+                      {autoScroll ? 'Following' : 'Paused'}
+                    </Text>
+                  </Pressable>
+                  <Pressable style={styles.actionBtn} onPress={exportLogs}>
+                    <Ionicons name="share-outline" size={16} color={theme.text.secondary} />
+                  </Pressable>
+                  <Pressable style={styles.actionBtn} onPress={clearLogs}>
+                    <Ionicons name="trash-outline" size={16} color={theme.accent.error} />
+                  </Pressable>
+                </View>
               </View>
-            )
-          }
 
-          {/* Bottom padding */}
-          <View style={{ height: insets.bottom + 20 }} />
+              {/* Logs - Limited render for performance */}
+              {
+                filteredLogs.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
+                    <Text style={styles.emptyText}>No logs yet</Text>
+                    <Text style={styles.emptySubtext}>Load a stream to start debugging</Text>
+                  </View>
+                ) : (
+                  <View style={styles.logsInline}>
+                    {/* Only render last 100 logs for performance, full list available via export */}
+                    {filteredLogs.slice(-100).map(log => (
+                      <LogEntryItem
+                        key={log.id}
+                        log={log}
+                        isExpanded={expandedLogs.has(log.id)}
+                        onToggleExpand={toggleLogExpand}
+                        onCopy={copyLog}
+                        theme={theme}
+                      />
+                    ))}
+                    {filteredLogs.length > 100 && (
+                      <Text style={styles.logsHiddenText}>
+                        {filteredLogs.length - 100} older logs hidden (export to see all)
+                      </Text>
+                    )}
+                  </View>
+                )
+              }
+
+              {/* Bottom padding for tab bar */}
+              <View style={{ height: 80 }} />
+            </>
+          )}
+
+          {/* PLAYER TAB - Multi-View Toggle (shown on player tab only) */}
+          {activeMainTab === 'player' && getMultiViewStreams().length > 0 && (
+            <Pressable
+              style={[styles.multiViewToggle, multiViewMode && styles.multiViewToggleActive]}
+              onPress={() => setMultiViewMode(v => !v)}
+            >
+              <Ionicons
+                name={multiViewMode ? 'grid' : 'grid-outline'}
+                size={16}
+                color={multiViewMode ? theme.accent.primary : theme.text.secondary}
+              />
+              <Text style={[styles.multiViewToggleText, multiViewMode && styles.multiViewToggleTextActive]}>
+                {multiViewMode ? 'Exit Multi-View' : `Multi-View (${getMultiViewStreams().length} Streams)`}
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Bottom padding for tab bar */}
+          <View style={{ height: 80 }} />
         </ScrollView>
+      )}
+
+      {/* Main Tab Bar - Bottom Docked (Hidden in Immersive) */}
+      {!isImmersive && (
+        <MainTabBar
+          activeTab={activeMainTab}
+          onTabChange={setActiveMainTab}
+          theme={theme}
+          bottomInset={insets.bottom}
+        />
       )}
     </View>
   );
@@ -1864,5 +1961,51 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+  },
+  // Main Tab Bar Styles - Bottom Docked
+  mainTabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    backgroundColor: theme.bg.card,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    paddingBottom: 0, // Will be set dynamically with safe area
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  mainTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    gap: 2,
+    position: 'relative',
+  },
+  mainTabActive: {
+    // Active tab styling handled by indicator
+  },
+  mainTabLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: theme.text.muted,
+  },
+  mainTabLabelActive: {
+    color: theme.accent.primary,
+    fontWeight: '600',
+  },
+  mainTabIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    right: 8,
+    height: 2,
+    backgroundColor: theme.accent.primary,
+    borderRadius: 2,
   },
 });
