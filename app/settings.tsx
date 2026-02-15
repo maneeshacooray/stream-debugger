@@ -4,19 +4,19 @@ import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Keyboard,
-    Platform,
-    Pressable,
-    ScrollView,
-    Share,
-    StatusBar,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -248,14 +248,16 @@ function StreamEditor({ stream, onSave, onCancel, onDelete }: StreamEditorProps)
             <View style={styles.previewStatusBar}>
               <View style={[
                 styles.previewStatusDot,
-                { backgroundColor: previewStatus === 'playing' ? theme.accent.success :
-                                   previewStatus === 'error' ? theme.accent.error :
-                                   theme.accent.warning }
+                {
+                  backgroundColor: previewStatus === 'playing' ? theme.accent.success :
+                    previewStatus === 'error' ? theme.accent.error :
+                      theme.accent.warning
+                }
               ]} />
               <Text style={styles.previewStatusLabel}>
                 {previewStatus === 'playing' ? 'Stream OK' :
-                 previewStatus === 'error' ? 'Stream Failed' :
-                 'Testing...'}
+                  previewStatus === 'error' ? 'Stream Failed' :
+                    'Testing...'}
               </Text>
             </View>
           </View>
@@ -382,6 +384,7 @@ export default function SettingsScreen() {
     toggleFavorite,
     setDefaultStream,
     setMultiViewStreams,
+    setMaxMultiViewStreams,
     exportData,
     importData,
     clearAllData,
@@ -400,13 +403,24 @@ export default function SettingsScreen() {
       setMultiViewStreams(currentIds.filter(id => id !== streamId));
     } else {
       // Add to multi-view (max streams)
-      if (currentIds.length >= MAX_MULTI_VIEW_STREAMS) {
-        Alert.alert('Limit Reached', `You can select up to ${MAX_MULTI_VIEW_STREAMS} streams for multi-view mode.`);
+      const limit = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+      if (currentIds.length >= limit) {
+        Alert.alert('Limit Reached', `You can select up to ${limit} streams for multi-view mode.`);
         return;
       }
       setMultiViewStreams([...currentIds, streamId]);
     }
-  }, [settings.multiViewStreamIds, setMultiViewStreams]);
+  }, [settings.multiViewStreamIds, settings.maxMultiViewStreams, setMultiViewStreams]);
+
+  const handleIncrementLimit = useCallback(() => {
+    const current = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+    if (current < 16) setMaxMultiViewStreams(current + 1);
+  }, [settings.maxMultiViewStreams, setMaxMultiViewStreams]);
+
+  const handleDecrementLimit = useCallback(() => {
+    const current = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+    if (current > 1) setMaxMultiViewStreams(current - 1);
+  }, [settings.maxMultiViewStreams, setMaxMultiViewStreams]);
 
   const handleSaveStream = useCallback(
     async (name: string, url: string, isLive: boolean, isFavorite: boolean) => {
@@ -565,12 +579,33 @@ export default function SettingsScreen() {
               <Ionicons name="grid-outline" size={18} color={theme.accent.primary} />
               <Text style={styles.sectionTitle}>Multi-View Streams</Text>
               <Text style={styles.sectionCount}>
-                {settings.multiViewStreamIds?.length || 0}/{MAX_MULTI_VIEW_STREAMS}
+                {settings.multiViewStreamIds?.length || 0}/{settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS}
               </Text>
             </View>
 
+            <View style={styles.limitControl}>
+              <Text style={styles.limitLabel}>Max Streams Allowed</Text>
+              <View style={styles.limitStepper}>
+                <Pressable
+                  style={[styles.stepperBtn, (settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) <= 1 && styles.stepperBtnDisabled]}
+                  onPress={handleDecrementLimit}
+                  disabled={(settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) <= 1}
+                >
+                  <Ionicons name="remove" size={20} color={theme.text.primary} />
+                </Pressable>
+                <Text style={styles.limitValue}>{settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS}</Text>
+                <Pressable
+                  style={[styles.stepperBtn, (settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) >= 16 && styles.stepperBtnDisabled]}
+                  onPress={handleIncrementLimit}
+                  disabled={(settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS) >= 16}
+                >
+                  <Ionicons name="add" size={20} color={theme.text.primary} />
+                </Pressable>
+              </View>
+            </View>
+
             <Text style={styles.multiViewDescription}>
-              Select up to {MAX_MULTI_VIEW_STREAMS} streams to display simultaneously in multi-view mode.
+              Select up to {settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS} streams to display simultaneously in multi-view mode.
             </Text>
 
             <View style={styles.multiViewList}>
@@ -802,7 +837,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.accent.error,
   },
   liveText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: theme.accent.error,
   },
@@ -813,9 +848,71 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   defaultText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: theme.accent.success,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: theme.bg.tertiary,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 24,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: theme.text.secondary,
+    lineHeight: 18,
+  },
+  multiViewDescription: {
+    fontSize: 13,
+    color: theme.text.secondary,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  limitControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.bg.card,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  limitLabel: {
+    fontSize: 15,
+    color: theme.text.primary,
+    fontWeight: '500',
+  },
+  limitStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 8,
+    padding: 4,
+  },
+  stepperBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.bg.card,
+    borderRadius: 6,
+  },
+  stepperBtnDisabled: {
+    opacity: 0.5,
+  },
+  limitValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text.primary,
+    width: 24,
+    textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -831,28 +928,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.text.muted,
     marginTop: 4,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    backgroundColor: theme.bg.secondary,
-    borderRadius: 8,
-    padding: 12,
-    gap: 10,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 12,
-    color: theme.text.secondary,
-    lineHeight: 18,
-  },
-  // Multi-View styles
-  multiViewDescription: {
-    fontSize: 12,
-    color: theme.text.muted,
-    marginBottom: 12,
   },
   multiViewList: {
     gap: 8,
