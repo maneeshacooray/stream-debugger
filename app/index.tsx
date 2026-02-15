@@ -119,7 +119,7 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
 // ============================================================================
 // Main Screen Tab Types and Configuration
 // ============================================================================
-type MainTabId = 'player' | 'info' | 'logs';
+type MainTabId = 'info' | 'playlist' | 'logs';
 
 interface MainTabItem {
   id: MainTabId;
@@ -128,9 +128,9 @@ interface MainTabItem {
 }
 
 const MAIN_TABS: MainTabItem[] = [
-  { id: 'player', label: 'Player', icon: 'play-circle-outline' },
   { id: 'info', label: 'Info', icon: 'information-circle-outline' },
-  { id: 'logs', label: 'Logs', icon: 'list-outline' },
+  { id: 'playlist', label: 'Playlist', icon: 'list-outline' },
+  { id: 'logs', label: 'Logs', icon: 'terminal-outline' },
 ];
 
 // ============================================================================
@@ -397,7 +397,7 @@ export default function StreamDebugger() {
   const [multiViewReloadKey, setMultiViewReloadKey] = useState(0);
   const [networkStats, setNetworkStats] = useState<NetworkStats | null>(null);
   const [isImmersive, setIsImmersive] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<MainTabId>('player');
+  const [activeMainTab, setActiveMainTab] = useState<MainTabId>('info');
 
   // Get favorite streams for quick access bar - filter directly from streams state
   const favoriteStreams = useMemo(() => {
@@ -873,6 +873,16 @@ export default function StreamDebugger() {
               <Text style={[styles.statusText, { color: getStatusColor() }]}>{playerStatus}</Text>
               <Ionicons name={showPlayer ? 'chevron-up' : 'chevron-down'} size={14} color={getStatusColor()} />
             </Pressable>
+            <Pressable
+              style={[styles.settingsBtn, multiViewMode && { backgroundColor: theme.accent.primary + '20', borderRadius: 8 }]}
+              onPress={() => setMultiViewMode(v => !v)}
+            >
+              <Ionicons
+                name={multiViewMode ? 'grid' : 'grid-outline'}
+                size={22}
+                color={multiViewMode ? theme.accent.primary : theme.text.secondary}
+              />
+            </Pressable>
             <Pressable style={styles.settingsBtn} onPress={openSettings}>
               <Ionicons name="settings-outline" size={22} color={theme.text.secondary} />
             </Pressable>
@@ -1018,22 +1028,7 @@ export default function StreamDebugger() {
           showsVerticalScrollIndicator={true}
           nestedScrollEnabled
         >
-          {/* Multi-View Toggle */}
-          {getMultiViewStreams().length > 0 && (
-            <Pressable
-              style={[styles.multiViewToggle, multiViewMode && styles.multiViewToggleActive]}
-              onPress={() => setMultiViewMode(v => !v)}
-            >
-              <Ionicons
-                name={multiViewMode ? 'grid' : 'grid-outline'}
-                size={16}
-                color={multiViewMode ? theme.accent.primary : theme.text.secondary}
-              />
-              <Text style={[styles.multiViewToggleText, multiViewMode && styles.multiViewToggleTextActive]}>
-                {multiViewMode ? 'Exit Multi-View' : `Multi-View (${getMultiViewStreams().length} Streams)`}
-              </Text>
-            </Pressable>
-          )}
+
 
           {/* INFO TAB - Network Quality, Stream Metadata, Video Stats, Device Stats */}
           {activeMainTab === 'info' && (
@@ -1328,21 +1323,10 @@ export default function StreamDebugger() {
             </>
           )}
 
-          {/* PLAYER TAB - Multi-View Toggle (shown on player tab only) */}
-          {activeMainTab === 'player' && getMultiViewStreams().length > 0 && (
-            <Pressable
-              style={[styles.multiViewToggle, multiViewMode && styles.multiViewToggleActive]}
-              onPress={() => setMultiViewMode(v => !v)}
-            >
-              <Ionicons
-                name={multiViewMode ? 'grid' : 'grid-outline'}
-                size={16}
-                color={multiViewMode ? theme.accent.primary : theme.text.secondary}
-              />
-              <Text style={[styles.multiViewToggleText, multiViewMode && styles.multiViewToggleTextActive]}>
-                {multiViewMode ? 'Exit Multi-View' : `Multi-View (${getMultiViewStreams().length} Streams)`}
-              </Text>
-            </Pressable>
+
+          {/* PLAYLIST TAB - Playlist Viewer */}
+          {activeMainTab === 'playlist' as any && (
+            <StreamMetadata streamUrl={streamUrl} theme={theme} standalone={true} />
           )}
 
           {/* Bottom padding for tab bar */}
@@ -1350,8 +1334,8 @@ export default function StreamDebugger() {
         </ScrollView>
       )}
 
-      {/* Main Tab Bar - Bottom Docked (Hidden in Immersive) */}
-      {!isImmersive && (
+      {/* Main Tab Bar - Bottom Docked (Hidden in Immersive or Multiview) */}
+      {!isImmersive && !multiViewMode && (
         <MainTabBar
           activeTab={activeMainTab}
           onTabChange={setActiveMainTab}

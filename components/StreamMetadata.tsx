@@ -17,6 +17,7 @@ import { Theme } from '../constants/appTheme';
 interface StreamMetadataProps {
   streamUrl: string;
   theme: Theme;
+  standalone?: boolean;
 }
 
 interface ParsedPlaylist {
@@ -210,12 +211,12 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
 // ============================================================================
 // Component
 // ============================================================================
-function StreamMetadataComponent({ streamUrl, theme }: StreamMetadataProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadataProps) {
+  const styles = useMemo(() => createStyles(theme, standalone), [theme, standalone]);
   const [playlist, setPlaylist] = useState<ParsedPlaylist | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(standalone || false);
   const [showRaw, setShowRaw] = useState(false);
   const lastFetchedUrl = useRef<string>('');
 
@@ -263,9 +264,6 @@ function StreamMetadataComponent({ streamUrl, theme }: StreamMetadataProps) {
     setIsExpanded(prev => !prev);
   }, []);
 
-  const toggleRaw = useCallback(() => {
-    setShowRaw(prev => !prev);
-  }, []);
 
   // Render nothing if no URL
   if (!streamUrl) {
@@ -274,50 +272,52 @@ function StreamMetadataComponent({ streamUrl, theme }: StreamMetadataProps) {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <Pressable style={styles.header} onPress={toggleExpanded}>
-        <View style={styles.headerLeft}>
-          <Ionicons name="document-text" size={16} color={theme.accent.primary} />
-          <Text style={styles.headerTitle}>Playlist</Text>
-          {playlist && (
-            <View style={[
-              styles.typeBadge,
-              { backgroundColor: playlist.isLive ? theme.accent.error : theme.accent.success }
-            ]}>
-              <Text style={styles.typeBadgeText}>
-                {playlist.isLive ? 'LIVE' : 'VOD'}
-              </Text>
-            </View>
-          )}
-          {playlist && (
-            <View style={[
-              styles.typeBadge,
-              { backgroundColor: theme.bg.tertiary }
-            ]}>
-              <Text style={[styles.typeBadgeText, { color: theme.text.secondary }]}>
-                {playlist.type === 'master' ? 'Master' : playlist.type === 'media' ? 'Media' : 'Unknown'}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.headerRight}>
-          {isLoading && (
-            <ActivityIndicator size="small" color={theme.accent.primary} />
-          )}
-          <Pressable onPress={handleRefresh} hitSlop={8}>
-            <Ionicons name="refresh" size={16} color={theme.text.muted} />
-          </Pressable>
-          <Ionicons
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={theme.text.muted}
-          />
-        </View>
-      </Pressable>
+      {/* Header - Hidden in standalone mode */}
+      {!standalone && (
+        <Pressable style={styles.header} onPress={toggleExpanded}>
+          <View style={styles.headerLeft}>
+            <Ionicons name="document-text" size={16} color={theme.accent.primary} />
+            <Text style={styles.headerTitle}>Playlist</Text>
+            {playlist && (
+              <View style={[
+                styles.typeBadge,
+                { backgroundColor: playlist.isLive ? theme.accent.error : theme.accent.success }
+              ]}>
+                <Text style={styles.typeBadgeText}>
+                  {playlist.isLive ? 'LIVE' : 'VOD'}
+                </Text>
+              </View>
+            )}
+            {playlist && (
+              <View style={[
+                styles.typeBadge,
+                { backgroundColor: theme.bg.tertiary }
+              ]}>
+                <Text style={[styles.typeBadgeText, { color: theme.text.secondary }]}>
+                  {playlist.type === 'master' ? 'Master' : playlist.type === 'media' ? 'Media' : 'Unknown'}
+                </Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.headerRight}>
+            {isLoading && (
+              <ActivityIndicator size="small" color={theme.accent.primary} />
+            )}
+            <Pressable onPress={handleRefresh} hitSlop={8}>
+              <Ionicons name="refresh" size={16} color={theme.text.muted} />
+            </Pressable>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={theme.text.muted}
+            />
+          </View>
+        </Pressable>
+      )}
 
       {/* Content */}
       {isExpanded && (
-        <View style={styles.content}>
+        <View style={[styles.content, standalone && styles.contentStandalone]}>
           {error ? (
             <View style={styles.errorContainer}>
               <Ionicons name="alert-circle" size={16} color={theme.accent.error} />
@@ -496,16 +496,17 @@ export const StreamMetadata = memo(StreamMetadataComponent);
 // ============================================================================
 // Styles
 // ============================================================================
-const createStyles = (theme: Theme) => StyleSheet.create({
+const createStyles = (theme: Theme, standalone?: boolean) => StyleSheet.create({
   container: {
     backgroundColor: theme.bg.card,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: standalone ? 0 : 10,
+    borderWidth: standalone ? 0 : 1,
     borderColor: theme.border,
-    marginHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 12,
+    marginHorizontal: standalone ? 0 : 12,
+    marginTop: standalone ? 0 : 8,
+    marginBottom: standalone ? 0 : 12,
     overflow: 'hidden',
+    flex: standalone ? 1 : undefined,
   },
   header: {
     flexDirection: 'row',
@@ -543,6 +544,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: theme.border,
   },
+  contentStandalone: {
+    borderTopWidth: 0,
+    flex: 1,
+  },
   toggleRow: {
     flexDirection: 'row',
     padding: 8,
@@ -566,8 +571,9 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     color: '#fff',
   },
   rawContainer: {
-    maxHeight: 300,
+    maxHeight: standalone ? undefined : 300,
     backgroundColor: theme.bg.primary,
+    flex: standalone ? 1 : undefined,
   },
   rawContent: {
     fontFamily: 'monospace',
@@ -577,8 +583,9 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     lineHeight: 14,
   },
   parsedContainer: {
-    maxHeight: 350,
+    maxHeight: standalone ? undefined : 350,
     padding: 12,
+    flex: standalone ? 1 : undefined,
   },
   section: {
     marginBottom: 16,
