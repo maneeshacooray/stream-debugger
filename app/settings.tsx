@@ -693,10 +693,7 @@ export default function SettingsScreen() {
                 return (
                   <Pressable
                     key={stream.id}
-                    style={[
-                      styles.multiViewItem,
-                      isSelected && styles.multiViewItemSelected,
-                    ]}
+                    style={styles.multiViewItem}
                     onPress={() => toggleMultiViewStream(stream.id)}
                   >
                     <View style={styles.multiViewItemLeft}>
@@ -724,9 +721,6 @@ export default function SettingsScreen() {
                         </View>
                       )}
                     </View>
-                    {isSelected && (
-                      <Ionicons name="checkmark-circle" size={20} color={theme.accent.success} />
-                    )}
                   </Pressable>
                 );
               })}
