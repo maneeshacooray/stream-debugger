@@ -864,7 +864,7 @@ export default function StreamDebugger() {
         <View style={styles.header}>
           <Pressable style={styles.headerLeft} onPress={showAboutDeveloper} hitSlop={8}>
             <Ionicons name="bug" size={24} color={theme.accent.primary} />
-            <Text style={styles.title}>Stream Debugger</Text>
+            <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Stream Debugger</Text>
           </Pressable>
           <View style={styles.headerRight}>
             <Pressable
@@ -872,7 +872,7 @@ export default function StreamDebugger() {
               onPress={() => setShowPlayer(v => !v)}
             >
               <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
-              <Text style={[styles.statusText, { color: getStatusColor() }]}>{playerStatus}</Text>
+              <Text style={[styles.statusText, { color: getStatusColor() }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{playerStatus}</Text>
               {!isLargeScreen && <Ionicons name={showPlayer ? 'chevron-up' : 'chevron-down'} size={14} color={getStatusColor()} />}
             </Pressable>
             <Pressable
@@ -1402,23 +1402,27 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     borderBottomColor: theme.border,
   },
   headerLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    marginRight: 8,
   },
   title: {
     fontSize: 18,
     fontWeight: '700',
     color: theme.text.primary,
+    flexShrink: 1,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
+    gap: 4,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
+    flexShrink: 1,
   },
   statusDot: {
     width: 6,
@@ -1426,14 +1430,16 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     borderRadius: 3,
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
+    flexShrink: 1,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
+    flexShrink: 0,
   },
   settingsBtn: {
     padding: 6,
