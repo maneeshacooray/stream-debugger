@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MAX_MULTI_VIEW_STREAMS, StreamConfig, useStreamConfig } from '../config/streams';
 import { ABOUT } from '../constants/about';
 import { defaultTheme, Theme, useAppTheme } from '../constants/appTheme';
+import { useResponsive } from '../hooks/useResponsive';
 
 // ============================================================================
 // Theme (matching main screen)
@@ -42,6 +43,7 @@ interface StreamEditorProps {
 
 function StreamEditor({ stream, onSave, onCancel, onDelete, theme }: StreamEditorProps) {
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const { isLargeScreen } = useResponsive();
 
   const [name, setName] = useState(stream?.name || '');
   const [url, setUrl] = useState(stream?.url || '');
@@ -51,11 +53,11 @@ function StreamEditor({ stream, onSave, onCancel, onDelete, theme }: StreamEdito
   const [previewStatus, setPreviewStatus] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
 
   // Preview player - only created when showPreview is true and URL is valid
-  const previewPlayer = useVideoPlayer(showPreview && url.trim() ? url.trim() : null, (player) => {
-    if (player) {
-      player.loop = true;
-      player.muted = true;
-      player.play();
+  const previewPlayer = useVideoPlayer(showPreview && url.trim() ? url.trim() : null, (p) => {
+    if (p) {
+      p.loop = true;
+      p.muted = true;
+      p.play();
     }
   });
 
@@ -156,7 +158,7 @@ function StreamEditor({ stream, onSave, onCancel, onDelete, theme }: StreamEdito
   };
 
   return (
-    <ScrollView style={styles.editorContainer} contentContainerStyle={styles.editorScrollContent}>
+    <ScrollView style={styles.editorContainer} contentContainerStyle={[styles.editorScrollContent, isLargeScreen && { maxWidth: 800, alignSelf: 'center', width: '100%' }]}>
       <View style={styles.editorHeader}>
         <Text style={styles.editorTitle}>
           {stream ? 'Edit Stream' : 'Add Stream'}
@@ -553,6 +555,7 @@ const TabBar = memo(function TabBar({ activeTab, onTabChange, theme, bottomInset
 // ============================================================================
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { isLargeScreen } = useResponsive();
 
   const {
     isLoading,
@@ -715,7 +718,7 @@ export default function SettingsScreen() {
         <View style={styles.addBtn} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+      <ScrollView style={styles.content} contentContainerStyle={[styles.contentContainer, isLargeScreen && { maxWidth: 800, alignSelf: 'center', width: '100%' }]}>
         {/* STREAMS TAB */}
         {activeTab === 'streams' && (
           <>
@@ -1007,10 +1010,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: theme.border,
     paddingBottom: 0, // Will be set dynamically with safe area
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    boxShadow: '0px -2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 8,
   },
   tab: {
@@ -1052,10 +1052,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     backgroundColor: theme.accent.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.3)',
     elevation: 8,
   },
   content: {
