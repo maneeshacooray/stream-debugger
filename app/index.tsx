@@ -315,7 +315,7 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog,
 
   return (
     <Pressable style={styles.multiViewCard} onPress={onPress}>
-      <View style={styles.multiViewVideoWrapper} pointerEvents="none">
+      <View style={[styles.multiViewVideoWrapper, { pointerEvents: 'none' }]}>
         {player && streamUrl && (
           <VideoView
             style={styles.video}
@@ -611,6 +611,11 @@ export default function StreamDebugger() {
     fetchAndLogStream(streamUrl);
     player.loop = false;
     player.timeUpdateEventInterval = 0.5; // Update stats every 500ms
+
+    // Mute by default on web to allow autoplay
+    if (Platform.OS === 'web') {
+      player.muted = true;
+    }
 
     listeners.push(
       player.addListener('playingChange', ({ isPlaying: playing }) => {
@@ -908,7 +913,7 @@ export default function StreamDebugger() {
 
 
                   {/* Immersive Controls - ensure high Z-Index and Elevation */}
-                  <View style={[StyleSheet.absoluteFill, { zIndex: 2000 }]} pointerEvents="box-none">
+                  <View style={[StyleSheet.absoluteFill, { zIndex: 2000, pointerEvents: 'box-none' }]}>
                     {/* Toggle / Minimize Button */}
                     <Pressable
                       style={[styles.immersiveBtn, isImmersive && styles.immersiveBtnActive, { elevation: 20 }]}
@@ -1453,18 +1458,19 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   playerCard: {
     backgroundColor: theme.bg.card,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: 'hidden', // Ensure video and other content don't leak out
     borderWidth: 1,
     borderColor: theme.border,
   },
   videoWrapper: {
     aspectRatio: 16 / 9,
     backgroundColor: '#000',
+    overflow: 'hidden', // CRITICAL: Enclose the video element on web
   },
   video: {
-    flex: 1,
     width: '100%',
     height: '100%',
+    overflow: 'hidden',
   },
   liveDot: {
     width: 6,
@@ -1580,6 +1586,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   multiViewVideoWrapper: {
     aspectRatio: 16 / 9,
     backgroundColor: '#000',
+    overflow: 'hidden',
   },
   multiViewLabel: {
     flexDirection: 'row',
@@ -1960,6 +1967,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#000',
+    overflow: 'hidden',
   },
   immersiveBtn: {
     position: 'absolute',
