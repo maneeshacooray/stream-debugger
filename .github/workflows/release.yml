@@ -7,9 +7,12 @@ name: Build and Release
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
 
 permissions:
-  contents: write  # create release and tag
+  contents: write # create release and tag
 
 jobs:
   build-and-release:
