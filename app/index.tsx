@@ -27,7 +27,7 @@ import { StreamConfig, useStreamConfig } from '../config/streams';
 
 // Components
 import { DeviceStats } from '../components/DeviceStats';
-import { NetworkQualityIndicator, NetworkStats } from '../components/NetworkQualityIndicator';
+import { NetworkQualityIndicator } from '../components/NetworkQualityIndicator';
 import { StreamMetadata } from '../components/StreamMetadata';
 
 // Theme & About
@@ -182,7 +182,11 @@ interface ZoomableVideoProps {
   theme: Theme;
 }
 
-const ZoomableVideo = ({ player, enabled, theme }: ZoomableVideoProps) => {
+/**
+ * Memoized ZoomableVideo component to prevent unnecessary re-renders
+ * when the main StreamDebugger component updates (e.g. during time updates or logging).
+ */
+const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme }: ZoomableVideoProps) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const scale = useSharedValue(1);
   const focalX = useSharedValue(0);
@@ -252,7 +256,7 @@ const ZoomableVideo = ({ player, enabled, theme }: ZoomableVideoProps) => {
       </Animated.View>
     </GestureDetector>
   );
-};
+});
 
 // ============================================================================
 // Multi-View Player Component (lazy loaded)
@@ -397,7 +401,6 @@ export default function StreamDebugger() {
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const [multiViewMode, setMultiViewMode] = useState(false);
   const [multiViewReloadKey, setMultiViewReloadKey] = useState(0);
-  const [networkStats, setNetworkStats] = useState<NetworkStats | null>(null);
   const [isImmersive, setIsImmersive] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<MainTabId>('info');
 
@@ -1071,7 +1074,6 @@ export default function StreamDebugger() {
                         isPlaying={isPlaying}
                         isLive={videoStats.isLive}
                         latency={videoStats.currentOffsetFromLive}
-                        onStatsUpdate={setNetworkStats}
                       />
                     </View>
 
