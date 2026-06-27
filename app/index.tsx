@@ -58,6 +58,54 @@ interface LogEntry {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+const formatTime = (seconds: number): string => {
+  if (!isFinite(seconds) || seconds < 0) return '0:00';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const parseCodecName = (mimeType: string | null, theme: Theme): { name: string; fullName: string; color: string } => {
+  if (!mimeType) return { name: '--', fullName: 'Unknown', color: theme.text.muted };
+
+  const mime = mimeType.toLowerCase();
+
+  // H.265 / HEVC
+  if (mime.includes('hevc') || mime.includes('hvc1') || mime.includes('hev1') || mime.includes('h265') || mime.includes('x265')) {
+    return { name: 'H.265', fullName: 'HEVC (H.265)', color: theme.accent.success };
+  }
+  // H.264 / AVC
+  if (mime.includes('avc') || mime.includes('h264') || mime.includes('x264')) {
+    return { name: 'H.264', fullName: 'AVC (H.264)', color: theme.accent.info };
+  }
+  // VP9
+  if (mime.includes('vp9') || mime.includes('vp09')) {
+    return { name: 'VP9', fullName: 'VP9', color: theme.accent.warning };
+  }
+  // VP8
+  if (mime.includes('vp8')) {
+    return { name: 'VP8', fullName: 'VP8', color: theme.accent.warning };
+  }
+  // AV1
+  if (mime.includes('av1') || mime.includes('av01')) {
+    return { name: 'AV1', fullName: 'AV1', color: '#ff6b9d' };
+  }
+  // MPEG-4
+  if (mime.includes('mp4v') || mime.includes('mpeg4')) {
+    return { name: 'MPEG-4', fullName: 'MPEG-4 Part 2', color: theme.text.secondary };
+  }
+
+  // Return the raw mime type if unknown
+  return { name: mimeType.split('/').pop() || mimeType, fullName: mimeType, color: theme.text.secondary };
+};
+
+// ============================================================================
 // Memoized Log Entry Component
 // ============================================================================
 interface LogEntryProps {
@@ -66,10 +114,10 @@ interface LogEntryProps {
   onToggleExpand: (id: string) => void;
   onCopy: (log: LogEntry) => void;
   theme: Theme;
+  styles: any;
 }
 
-const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpand, onCopy, theme }: LogEntryProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpand, onCopy, theme, styles }: LogEntryProps) {
   const isMultiline = log.message.includes('\n') || log.message.length > 80;
 
   const handlePress = useCallback(() => {
@@ -142,11 +190,10 @@ interface MainTabBarProps {
   onTabChange: (tab: MainTabId) => void;
   theme: Theme;
   bottomInset: number;
+  styles: any;
 }
 
-const MainTabBar = memo(function MainTabBar({ activeTab, onTabChange, theme, bottomInset }: MainTabBarProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
-
+const MainTabBar = memo(function MainTabBar({ activeTab, onTabChange, theme, bottomInset, styles }: MainTabBarProps) {
   return (
     <View style={[styles.mainTabBar, { paddingBottom: bottomInset }]}>
       {MAIN_TABS.map((tab) => {
@@ -180,14 +227,14 @@ interface ZoomableVideoProps {
   player: any;
   enabled: boolean;
   theme: Theme;
+  styles: any;
 }
 
 /**
  * Memoized ZoomableVideo component to prevent unnecessary re-renders
  * when the main StreamDebugger component updates (e.g. during time updates or logging).
  */
-const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme }: ZoomableVideoProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styles }: ZoomableVideoProps) {
   const scale = useSharedValue(1);
   const focalX = useSharedValue(0);
   const focalY = useSharedValue(0);
@@ -267,10 +314,10 @@ interface MultiViewPlayerProps {
   onLog?: (message: string, level: 'info' | 'error') => void;
   onPress?: () => void;
   theme: Theme;
+  styles: any;
 }
 
-const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog, onPress, theme }: MultiViewPlayerProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog, onPress, theme, styles }: MultiViewPlayerProps) {
   const player = useVideoPlayer(streamUrl || null);
   const mountedRef = useRef(true);
   const loadStartRef = useRef(Date.now());
@@ -345,6 +392,272 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog,
 });
 
 // ============================================================================
+// Info Tab Content Component
+// ============================================================================
+interface InfoTabContentProps {
+  player: any;
+  streamUrl: string;
+  theme: Theme;
+  isPlaying: boolean;
+  styles: any;
+}
+
+/**
+ * Isolated Info tab content to prevent frequent re-renders of the entire app
+ * when video stats (currentTime, etc) update every 500ms.
+ */
+const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, isPlaying, styles }: InfoTabContentProps) {
+  const [showStats, setShowStats] = useState(true);
+  const [videoStats, setVideoStats] = useState<{
+    currentTime: number;
+    duration: number;
+    bufferedPosition: number;
+    isLive: boolean;
+    currentOffsetFromLive: number | null;
+    videoTrack: {
+      width: number;
+      height: number;
+      bitrate: number | null;
+      frameRate: number | null;
+      mimeType: string | null;
+    } | null;
+    audioTrack: {
+      label: string;
+      language: string;
+    } | null;
+    playbackRate: number;
+    volume: number;
+    muted: boolean;
+  }>({
+    currentTime: 0,
+    duration: 0,
+    bufferedPosition: 0,
+    isLive: false,
+    currentOffsetFromLive: null,
+    videoTrack: null,
+    audioTrack: null,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+  });
+
+  useEffect(() => {
+    if (!player) return;
+
+    const listener = player.addListener('timeUpdate', ({ currentTime, bufferedPosition, currentOffsetFromLive }: { currentTime: number; bufferedPosition: number; currentOffsetFromLive: number | null }) => {
+      setVideoStats(prev => ({
+        ...prev,
+        currentTime,
+        bufferedPosition,
+        duration: player.duration,
+        isLive: player.isLive,
+        currentOffsetFromLive,
+        playbackRate: player.playbackRate,
+        volume: player.volume,
+        muted: player.muted,
+        videoTrack: player.videoTrack ? {
+          width: player.videoTrack.size.width,
+          height: player.videoTrack.size.height,
+          bitrate: player.videoTrack.bitrate,
+          frameRate: player.videoTrack.frameRate,
+          mimeType: player.videoTrack.mimeType,
+        } : null,
+        audioTrack: player.audioTrack ? {
+          label: player.audioTrack.label,
+          language: player.audioTrack.language,
+        } : null,
+      }));
+    });
+
+    return () => {
+      listener?.remove();
+    };
+  }, [player]);
+
+  return (
+    <>
+      {/* Network Quality Indicator */}
+      <View style={styles.networkQualityRow}>
+        <NetworkQualityIndicator
+          bitrate={videoStats.videoTrack?.bitrate ?? null}
+          bufferedPosition={videoStats.bufferedPosition}
+          currentTime={videoStats.currentTime}
+          isPlaying={isPlaying}
+          isLive={videoStats.isLive}
+          latency={videoStats.currentOffsetFromLive}
+        />
+      </View>
+
+      {/* Stream Metadata / Playlist Viewer */}
+      <StreamMetadata streamUrl={streamUrl} theme={theme} />
+
+      {/* Video Stats Panel */}
+      <Pressable style={styles.videoStatsHeader} onPress={() => setShowStats(v => !v)}>
+        <View style={styles.videoStatsHeaderLeft}>
+          <Ionicons name="analytics-outline" size={16} color={theme.accent.primary} />
+          <Text style={styles.videoStatsTitle}>Video Stats</Text>
+          {videoStats.isLive && (
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDotSmall} />
+              <Text style={styles.liveBadgeText}>LIVE</Text>
+            </View>
+          )}
+        </View>
+        <Ionicons name={showStats ? 'chevron-up' : 'chevron-down'} size={16} color={theme.text.secondary} />
+      </Pressable>
+
+      {
+        showStats && (
+          <View style={styles.videoStatsPanelInline}>
+            {/* Time & Progress Row */}
+            <View style={styles.videoStatsRow}>
+              <View style={styles.videoStatBox}>
+                <Text style={styles.videoStatLabel}>Current Time</Text>
+                <Text style={styles.videoStatValue}>{formatTime(videoStats.currentTime)}</Text>
+              </View>
+              <View style={styles.videoStatBox}>
+                <Text style={styles.videoStatLabel}>Duration</Text>
+                <Text style={styles.videoStatValue}>{videoStats.duration > 0 ? formatTime(videoStats.duration) : '--:--'}</Text>
+              </View>
+              <View style={styles.videoStatBox}>
+                <Text style={styles.videoStatLabel}>Buffered</Text>
+                <Text style={styles.videoStatValue}>{formatTime(videoStats.bufferedPosition)}</Text>
+              </View>
+            </View>
+
+            {/* Live Stats Row (only shown for live streams) */}
+            {videoStats.isLive && (
+              <View style={styles.videoStatsRow}>
+                <View style={styles.videoStatBox}>
+                  <Text style={styles.videoStatLabel}>Latency</Text>
+                  <Text style={[styles.videoStatValue, { color: theme.accent.warning }]}>
+                    {videoStats.currentOffsetFromLive !== null ? `${videoStats.currentOffsetFromLive.toFixed(1)}s` : '--'}
+                  </Text>
+                </View>
+                <View style={[styles.videoStatBox, { flex: 2 }]}>
+                  <Text style={styles.videoStatLabel}>Buffer Ahead</Text>
+                  <Text style={styles.videoStatValue}>
+                    {(videoStats.bufferedPosition - videoStats.currentTime).toFixed(1)}s
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Codec & Resolution Row */}
+            {videoStats.videoTrack && (
+              <View style={styles.videoStatsRow}>
+                <View style={[styles.videoStatBox, styles.codecBox]}>
+                  <Text style={styles.videoStatLabel}>Codec</Text>
+                  <View style={styles.codecBadgeRow}>
+                    <View style={[styles.codecBadge, { backgroundColor: parseCodecName(videoStats.videoTrack.mimeType, theme).color + '25', borderColor: parseCodecName(videoStats.videoTrack.mimeType, theme).color }]}>
+                      <Text style={[styles.codecBadgeText, { color: parseCodecName(videoStats.videoTrack.mimeType, theme).color }]}>
+                        {parseCodecName(videoStats.videoTrack.mimeType, theme).name}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.videoStatBox}>
+                  <Text style={styles.videoStatLabel}>Resolution</Text>
+                  <Text style={styles.videoStatValue}>
+                    {videoStats.videoTrack.width}x{videoStats.videoTrack.height}
+                  </Text>
+                </View>
+                <View style={styles.videoStatBox}>
+                  <Text style={styles.videoStatLabel}>FPS</Text>
+                  <Text style={styles.videoStatValue}>
+                    {videoStats.videoTrack.frameRate?.toFixed(1) ?? '--'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Bitrate & Quality Row */}
+            {videoStats.videoTrack && (
+              <View style={styles.videoStatsRow}>
+                <View style={styles.videoStatBox}>
+                  <Text style={styles.videoStatLabel}>Bitrate</Text>
+                  <Text style={styles.videoStatValue}>
+                    {videoStats.videoTrack.bitrate
+                      ? `${(videoStats.videoTrack.bitrate / 1000000).toFixed(2)} Mbps`
+                      : '--'}
+                  </Text>
+                </View>
+                <View style={styles.videoStatBox}>
+                  <Text style={styles.videoStatLabel}>Quality</Text>
+                  <Text style={styles.videoStatValue}>
+                    {videoStats.videoTrack.height >= 2160 ? '4K UHD' :
+                      videoStats.videoTrack.height >= 1440 ? '1440p QHD' :
+                        videoStats.videoTrack.height >= 1080 ? '1080p FHD' :
+                          videoStats.videoTrack.height >= 720 ? '720p HD' :
+                            videoStats.videoTrack.height >= 480 ? '480p SD' :
+                              `${videoStats.videoTrack.height}p`}
+                  </Text>
+                </View>
+                <View style={styles.videoStatBox}>
+                  <Text style={styles.videoStatLabel}>Aspect</Text>
+                  <Text style={styles.videoStatValue}>
+                    {(videoStats.videoTrack.width / videoStats.videoTrack.height).toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Full Codec Info Row */}
+            {videoStats.videoTrack?.mimeType && (
+              <View style={styles.videoStatsRow}>
+                <View style={[styles.videoStatBox, { flex: 1 }]}>
+                  <Text style={styles.videoStatLabel}>Full Codec</Text>
+                  <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
+                    {parseCodecName(videoStats.videoTrack.mimeType, theme).fullName} - {videoStats.videoTrack.mimeType}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Playback Row */}
+            <View style={styles.videoStatsRow}>
+              <View style={styles.videoStatBox}>
+                <Text style={styles.videoStatLabel}>Speed</Text>
+                <Text style={styles.videoStatValue}>{videoStats.playbackRate}x</Text>
+              </View>
+              <View style={styles.videoStatBox}>
+                <Text style={styles.videoStatLabel}>Volume</Text>
+                <Text style={styles.videoStatValue}>{Math.round(videoStats.volume * 100)}%</Text>
+              </View>
+              <View style={styles.videoStatBox}>
+                <Text style={styles.videoStatLabel}>Muted</Text>
+                <Ionicons
+                  name={videoStats.muted ? 'volume-mute' : 'volume-high'}
+                  size={16}
+                  color={videoStats.muted ? theme.accent.error : theme.accent.success}
+                />
+              </View>
+            </View>
+
+            {/* Audio Track Row */}
+            {videoStats.audioTrack && (
+              <View style={styles.videoStatsRow}>
+                <View style={[styles.videoStatBox, { flex: 1 }]}>
+                  <Text style={styles.videoStatLabel}>Audio</Text>
+                  <Text style={styles.videoStatValue}>
+                    {videoStats.audioTrack.label} ({videoStats.audioTrack.language})
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Device Stats */}
+            <View style={styles.deviceStatsContainer}>
+              <DeviceStats theme={theme} />
+            </View>
+          </View>
+        )
+      }
+    </>
+  );
+});
+
+// ============================================================================
 // Main Component
 // ============================================================================
 export default function StreamDebugger() {
@@ -396,7 +709,6 @@ export default function StreamDebugger() {
   const [filter, setFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
   const [showPlayer, setShowPlayer] = useState(true);
-  const [showStats, setShowStats] = useState(true);
   const [autoScroll, setAutoScroll] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const [multiViewMode, setMultiViewMode] = useState(false);
@@ -419,40 +731,6 @@ export default function StreamDebugger() {
       }
     }
   }, [isConfigLoading, streamUrl, getDefaultStream]);
-
-  // Video stats state
-  const [videoStats, setVideoStats] = useState<{
-    currentTime: number;
-    duration: number;
-    bufferedPosition: number;
-    isLive: boolean;
-    currentOffsetFromLive: number | null;
-    videoTrack: {
-      width: number;
-      height: number;
-      bitrate: number | null;
-      frameRate: number | null;
-      mimeType: string | null;
-    } | null;
-    audioTrack: {
-      label: string;
-      language: string;
-    } | null;
-    playbackRate: number;
-    volume: number;
-    muted: boolean;
-  }>({
-    currentTime: 0,
-    duration: 0,
-    bufferedPosition: 0,
-    isLive: false,
-    currentOffsetFromLive: null,
-    videoTrack: null,
-    audioTrack: null,
-    playbackRate: 1,
-    volume: 1,
-    muted: false,
-  });
 
   // Refs
   const logIdRef = useRef(0);
@@ -632,31 +910,6 @@ export default function StreamDebugger() {
         const statusLabel = status === 'readyToPlay' ? '[READY]' : status === 'loading' ? '[LOADING]' : '[IDLE]';
         addLog('player', error ? 'error' : 'info', `${statusLabel} Status: ${status}${error ? ` - ${error}` : ''}`);
       }),
-      player.addListener('timeUpdate', ({ currentTime, bufferedPosition, currentOffsetFromLive }) => {
-        if (!isMounted) return;
-        setVideoStats(prev => ({
-          ...prev,
-          currentTime,
-          bufferedPosition,
-          duration: player.duration,
-          isLive: player.isLive,
-          currentOffsetFromLive,
-          playbackRate: player.playbackRate,
-          volume: player.volume,
-          muted: player.muted,
-          videoTrack: player.videoTrack ? {
-            width: player.videoTrack.size.width,
-            height: player.videoTrack.size.height,
-            bitrate: player.videoTrack.bitrate,
-            frameRate: player.videoTrack.frameRate,
-            mimeType: player.videoTrack.mimeType,
-          } : null,
-          audioTrack: player.audioTrack ? {
-            label: player.audioTrack.label,
-            language: player.audioTrack.language,
-          } : null,
-        }));
-      }),
       player.addListener('sourceLoad', ({ duration, availableVideoTracks, availableAudioTracks }) => {
         if (!isMounted) return;
         addLog('player', 'info', `Source loaded: ${duration.toFixed(1)}s, ${availableVideoTracks.length} video tracks, ${availableAudioTracks.length} audio tracks`);
@@ -815,51 +1068,6 @@ export default function StreamDebugger() {
     }
   };
 
-  const formatTime = (seconds: number): string => {
-    if (!isFinite(seconds) || seconds < 0) return '0:00';
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    if (hrs > 0) {
-      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const parseCodecName = (mimeType: string | null): { name: string; fullName: string; color: string } => {
-    if (!mimeType) return { name: '--', fullName: 'Unknown', color: theme.text.muted };
-
-    const mime = mimeType.toLowerCase();
-
-    // H.265 / HEVC
-    if (mime.includes('hevc') || mime.includes('hvc1') || mime.includes('hev1') || mime.includes('h265') || mime.includes('x265')) {
-      return { name: 'H.265', fullName: 'HEVC (H.265)', color: theme.accent.success };
-    }
-    // H.264 / AVC
-    if (mime.includes('avc') || mime.includes('h264') || mime.includes('x264')) {
-      return { name: 'H.264', fullName: 'AVC (H.264)', color: theme.accent.info };
-    }
-    // VP9
-    if (mime.includes('vp9') || mime.includes('vp09')) {
-      return { name: 'VP9', fullName: 'VP9', color: theme.accent.warning };
-    }
-    // VP8
-    if (mime.includes('vp8')) {
-      return { name: 'VP8', fullName: 'VP8', color: theme.accent.warning };
-    }
-    // AV1
-    if (mime.includes('av1') || mime.includes('av01')) {
-      return { name: 'AV1', fullName: 'AV1', color: '#ff6b9d' };
-    }
-    // MPEG-4
-    if (mime.includes('mp4v') || mime.includes('mpeg4')) {
-      return { name: 'MPEG-4', fullName: 'MPEG-4 Part 2', color: theme.text.secondary };
-    }
-
-    // Return the raw mime type if unknown
-    return { name: mimeType.split('/').pop() || mimeType, fullName: mimeType, color: theme.text.secondary };
-  };
-
   // ============================================================================
   // Render
   // ============================================================================
@@ -911,7 +1119,7 @@ export default function StreamDebugger() {
               <View style={isImmersive ? styles.playerCardImmersive : styles.playerCard}>
                 <View style={isImmersive ? styles.videoWrapperImmersive : styles.videoWrapper}>
                   {playerRef.current && !!streamUrl && (
-                    <ZoomableVideo player={playerRef.current} enabled={isImmersive} theme={theme} />
+                    <ZoomableVideo player={playerRef.current} enabled={isImmersive} theme={theme} styles={styles} />
                   )}
 
 
@@ -1033,6 +1241,7 @@ export default function StreamDebugger() {
                             onLog={handleMultiViewLog}
                             onPress={() => handleMultiViewPress(stream)}
                             theme={theme}
+                            styles={styles}
                           />
                         ))}
                         {/* Fill empty spots in the last row to maintain grid alignment */}
@@ -1064,185 +1273,13 @@ export default function StreamDebugger() {
 
                 {/* INFO TAB - Network Quality, Stream Metadata, Video Stats, Device Stats */}
                 {activeMainTab === 'info' && (
-                  <>
-                    {/* Network Quality Indicator */}
-                    <View style={styles.networkQualityRow}>
-                      <NetworkQualityIndicator
-                        bitrate={videoStats.videoTrack?.bitrate ?? null}
-                        bufferedPosition={videoStats.bufferedPosition}
-                        currentTime={videoStats.currentTime}
-                        isPlaying={isPlaying}
-                        isLive={videoStats.isLive}
-                        latency={videoStats.currentOffsetFromLive}
-                      />
-                    </View>
-
-                    {/* Stream Metadata / Playlist Viewer */}
-                    <StreamMetadata streamUrl={streamUrl} theme={theme} />
-
-                    {/* Video Stats Panel */}
-                    <Pressable style={styles.videoStatsHeader} onPress={() => setShowStats(v => !v)}>
-                      <View style={styles.videoStatsHeaderLeft}>
-                        <Ionicons name="analytics-outline" size={16} color={theme.accent.primary} />
-                        <Text style={styles.videoStatsTitle}>Video Stats</Text>
-                        {videoStats.isLive && (
-                          <View style={styles.liveBadge}>
-                            <View style={styles.liveDotSmall} />
-                            <Text style={styles.liveBadgeText}>LIVE</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Ionicons name={showStats ? 'chevron-up' : 'chevron-down'} size={16} color={theme.text.secondary} />
-                    </Pressable>
-
-                    {
-                      showStats && (
-                        <View style={styles.videoStatsPanelInline}>
-                          {/* Time & Progress Row */}
-                          <View style={styles.videoStatsRow}>
-                            <View style={styles.videoStatBox}>
-                              <Text style={styles.videoStatLabel}>Current Time</Text>
-                              <Text style={styles.videoStatValue}>{formatTime(videoStats.currentTime)}</Text>
-                            </View>
-                            <View style={styles.videoStatBox}>
-                              <Text style={styles.videoStatLabel}>Duration</Text>
-                              <Text style={styles.videoStatValue}>{videoStats.duration > 0 ? formatTime(videoStats.duration) : '--:--'}</Text>
-                            </View>
-                            <View style={styles.videoStatBox}>
-                              <Text style={styles.videoStatLabel}>Buffered</Text>
-                              <Text style={styles.videoStatValue}>{formatTime(videoStats.bufferedPosition)}</Text>
-                            </View>
-                          </View>
-
-                          {/* Live Stats Row (only shown for live streams) */}
-                          {videoStats.isLive && (
-                            <View style={styles.videoStatsRow}>
-                              <View style={styles.videoStatBox}>
-                                <Text style={styles.videoStatLabel}>Latency</Text>
-                                <Text style={[styles.videoStatValue, { color: theme.accent.warning }]}>
-                                  {videoStats.currentOffsetFromLive !== null ? `${videoStats.currentOffsetFromLive.toFixed(1)}s` : '--'}
-                                </Text>
-                              </View>
-                              <View style={[styles.videoStatBox, { flex: 2 }]}>
-                                <Text style={styles.videoStatLabel}>Buffer Ahead</Text>
-                                <Text style={styles.videoStatValue}>
-                                  {(videoStats.bufferedPosition - videoStats.currentTime).toFixed(1)}s
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Codec & Resolution Row */}
-                          {videoStats.videoTrack && (
-                            <View style={styles.videoStatsRow}>
-                              <View style={[styles.videoStatBox, styles.codecBox]}>
-                                <Text style={styles.videoStatLabel}>Codec</Text>
-                                <View style={styles.codecBadgeRow}>
-                                  <View style={[styles.codecBadge, { backgroundColor: parseCodecName(videoStats.videoTrack.mimeType).color + '25', borderColor: parseCodecName(videoStats.videoTrack.mimeType).color }]}>
-                                    <Text style={[styles.codecBadgeText, { color: parseCodecName(videoStats.videoTrack.mimeType).color }]}>
-                                      {parseCodecName(videoStats.videoTrack.mimeType).name}
-                                    </Text>
-                                  </View>
-                                </View>
-                              </View>
-                              <View style={styles.videoStatBox}>
-                                <Text style={styles.videoStatLabel}>Resolution</Text>
-                                <Text style={styles.videoStatValue}>
-                                  {videoStats.videoTrack.width}x{videoStats.videoTrack.height}
-                                </Text>
-                              </View>
-                              <View style={styles.videoStatBox}>
-                                <Text style={styles.videoStatLabel}>FPS</Text>
-                                <Text style={styles.videoStatValue}>
-                                  {videoStats.videoTrack.frameRate?.toFixed(1) ?? '--'}
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Bitrate & Quality Row */}
-                          {videoStats.videoTrack && (
-                            <View style={styles.videoStatsRow}>
-                              <View style={styles.videoStatBox}>
-                                <Text style={styles.videoStatLabel}>Bitrate</Text>
-                                <Text style={styles.videoStatValue}>
-                                  {videoStats.videoTrack.bitrate
-                                    ? `${(videoStats.videoTrack.bitrate / 1000000).toFixed(2)} Mbps`
-                                    : '--'}
-                                </Text>
-                              </View>
-                              <View style={styles.videoStatBox}>
-                                <Text style={styles.videoStatLabel}>Quality</Text>
-                                <Text style={styles.videoStatValue}>
-                                  {videoStats.videoTrack.height >= 2160 ? '4K UHD' :
-                                    videoStats.videoTrack.height >= 1440 ? '1440p QHD' :
-                                      videoStats.videoTrack.height >= 1080 ? '1080p FHD' :
-                                        videoStats.videoTrack.height >= 720 ? '720p HD' :
-                                          videoStats.videoTrack.height >= 480 ? '480p SD' :
-                                            `${videoStats.videoTrack.height}p`}
-                                </Text>
-                              </View>
-                              <View style={styles.videoStatBox}>
-                                <Text style={styles.videoStatLabel}>Aspect</Text>
-                                <Text style={styles.videoStatValue}>
-                                  {(videoStats.videoTrack.width / videoStats.videoTrack.height).toFixed(2)}
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Full Codec Info Row */}
-                          {videoStats.videoTrack?.mimeType && (
-                            <View style={styles.videoStatsRow}>
-                              <View style={[styles.videoStatBox, { flex: 1 }]}>
-                                <Text style={styles.videoStatLabel}>Full Codec</Text>
-                                <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
-                                  {parseCodecName(videoStats.videoTrack.mimeType).fullName} - {videoStats.videoTrack.mimeType}
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Playback Row */}
-                          <View style={styles.videoStatsRow}>
-                            <View style={styles.videoStatBox}>
-                              <Text style={styles.videoStatLabel}>Speed</Text>
-                              <Text style={styles.videoStatValue}>{videoStats.playbackRate}x</Text>
-                            </View>
-                            <View style={styles.videoStatBox}>
-                              <Text style={styles.videoStatLabel}>Volume</Text>
-                              <Text style={styles.videoStatValue}>{Math.round(videoStats.volume * 100)}%</Text>
-                            </View>
-                            <View style={styles.videoStatBox}>
-                              <Text style={styles.videoStatLabel}>Muted</Text>
-                              <Ionicons
-                                name={videoStats.muted ? 'volume-mute' : 'volume-high'}
-                                size={16}
-                                color={videoStats.muted ? theme.accent.error : theme.accent.success}
-                              />
-                            </View>
-                          </View>
-
-                          {/* Audio Track Row */}
-                          {videoStats.audioTrack && (
-                            <View style={styles.videoStatsRow}>
-                              <View style={[styles.videoStatBox, { flex: 1 }]}>
-                                <Text style={styles.videoStatLabel}>Audio</Text>
-                                <Text style={styles.videoStatValue}>
-                                  {videoStats.audioTrack.label} ({videoStats.audioTrack.language})
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Device Stats */}
-                          <View style={styles.deviceStatsContainer}>
-                            <DeviceStats theme={theme} />
-                          </View>
-                        </View>
-                      )
-                    }
-                  </>
+                  <InfoTabContent
+                    player={playerRef.current}
+                    streamUrl={streamUrl}
+                    theme={theme}
+                    isPlaying={isPlaying}
+                    styles={styles}
+                  />
                 )}
 
                 {/* LOGS TAB - Category Tabs, Log Controls, Logs List */}
@@ -1338,6 +1375,7 @@ export default function StreamDebugger() {
                               onToggleExpand={toggleLogExpand}
                               onCopy={copyLog}
                               theme={theme}
+                              styles={styles}
                             />
                           ))}
                           {filteredLogs.length > 100 && (
@@ -1372,6 +1410,7 @@ export default function StreamDebugger() {
                 onTabChange={setActiveMainTab}
                 theme={theme}
                 bottomInset={insets.bottom}
+                styles={styles}
               />
             )}
           </View>
@@ -1381,9 +1420,6 @@ export default function StreamDebugger() {
   );
 }
 
-// ============================================================================
-// Styles
-// ============================================================================
 // ============================================================================
 // Styles
 // ============================================================================
