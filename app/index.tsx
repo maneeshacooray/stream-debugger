@@ -658,6 +658,223 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
 });
 
 // ============================================================================
+// Logs Tab Content Component
+// ============================================================================
+interface LogsTabContentProps {
+  logs: LogEntry[];
+  clearLogs: () => void;
+  theme: Theme;
+  styles: any;
+  scrollRef: React.RefObject<ScrollView | null>;
+}
+
+/**
+ * Isolated Logs tab content to prevent expensive log filtering and list rendering
+ * from triggering re-renders of the entire application during high-frequency
+ * log updates or when the user is interacting with the logs (filtering, scrolling).
+ */
+const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, styles, scrollRef }: LogsTabContentProps) {
+  const [filter, setFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
+  const [autoScroll, setAutoScroll] = useState(false);
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+
+  // Stats
+  const logStats = useMemo(() => {
+    const stats = { total: logs.length, error: 0, warn: 0, info: 0, debug: 0 };
+    logs.forEach(log => stats[log.level]++);
+    return stats;
+  }, [logs]);
+
+  // Filtered logs
+  const filteredLogs = useMemo(() => {
+    let result = logs;
+
+    if (categoryFilter !== 'all') {
+      result = result.filter(log => log.category === categoryFilter);
+    }
+
+    if (filter) {
+      const lowerFilter = filter.toLowerCase();
+      result = result.filter(log =>
+        log.message.toLowerCase().includes(lowerFilter) ||
+        log.category.includes(lowerFilter) ||
+        log.level.includes(lowerFilter)
+      );
+    }
+
+    return result;
+  }, [logs, filter, categoryFilter]);
+
+  // Auto-scroll for ScrollView
+  const lastLogCountRef = useRef(0);
+  useEffect(() => {
+    if (autoScroll && scrollRef.current && filteredLogs.length > lastLogCountRef.current) {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: false });
+      });
+    }
+    lastLogCountRef.current = filteredLogs.length;
+  }, [filteredLogs.length, autoScroll, scrollRef]);
+
+  const exportLogs = useCallback(async () => {
+    const logText = filteredLogs.map(log =>
+      `[${log.time}] [${log.level.toUpperCase()}] [${log.category}] ${log.message}`
+    ).join('\n');
+
+    try {
+      await Share.share({
+        message: logText,
+        title: 'Stream Debug Logs',
+      });
+    } catch {
+      Alert.alert('Export Failed', 'Could not share logs');
+    }
+  }, [filteredLogs]);
+
+  const copyLog = useCallback(async (log: LogEntry) => {
+    try {
+      await Share.share({
+        message: `[${log.time}] [${log.level}] [${log.category}] ${log.message}`,
+      });
+    } catch { }
+  }, []);
+
+  const toggleLogExpand = useCallback((id: string) => {
+    setExpandedLogs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const renderCategoryTab = (cat: FilterCategory, label: string) => (
+    <Pressable
+      key={cat}
+      style={[styles.categoryTab, categoryFilter === cat && styles.categoryTabActive]}
+      onPress={() => setCategoryFilter(cat)}
+    >
+      <Text style={[styles.categoryTabText, categoryFilter === cat && styles.categoryTabTextActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+
+  return (
+    <>
+      {/* Stats Bar */}
+      <View style={styles.statsBar}>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{logStats.total}</Text>
+          <Text style={styles.statLabel}>Total</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: theme.accent.error }]}>{logStats.error}</Text>
+          <Text style={styles.statLabel}>Errors</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: theme.accent.warning }]}>{logStats.warn}</Text>
+          <Text style={styles.statLabel}>Warns</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: theme.accent.info }]}>{logStats.info}</Text>
+          <Text style={styles.statLabel}>Info</Text>
+        </View>
+      </View>
+
+      {/* Category Tabs */}
+      <View style={styles.categoryTabs}>
+        {renderCategoryTab('all', 'All')}
+        {renderCategoryTab('http', 'HTTP')}
+        {renderCategoryTab('player', 'Player')}
+        {renderCategoryTab('system', 'System')}
+      </View>
+
+      {/* Log Controls */}
+      <View style={styles.logControls}>
+        <View style={styles.filterRow}>
+          <Ionicons name="search" size={16} color={theme.text.muted} />
+          <TextInput
+            style={styles.filterInput}
+            placeholder="Filter logs..."
+            placeholderTextColor={theme.text.muted}
+            value={filter}
+            onChangeText={setFilter}
+          />
+          {filter !== '' && (
+            <Pressable onPress={() => setFilter('')}>
+              <Ionicons name="close-circle" size={18} color={theme.text.muted} />
+            </Pressable>
+          )}
+        </View>
+        <View style={styles.logActions}>
+          <Pressable
+            style={[styles.autoScrollBtn, autoScroll && styles.autoScrollBtnActive]}
+            onPress={() => setAutoScroll(v => !v)}
+          >
+            <Ionicons
+              name={autoScroll ? 'play' : 'pause'}
+              size={12}
+              color={autoScroll ? theme.accent.success : theme.text.muted}
+            />
+            <Text style={[styles.autoScrollText, autoScroll && styles.autoScrollTextActive]}>
+              {autoScroll ? 'Following' : 'Paused'}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.actionBtn} onPress={exportLogs}>
+            <Ionicons name="share-outline" size={16} color={theme.text.secondary} />
+          </Pressable>
+          <Pressable style={styles.actionBtn} onPress={clearLogs}>
+            <Ionicons name="trash-outline" size={16} color={theme.accent.error} />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Logs - Limited render for performance */}
+      {
+        filteredLogs.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
+            <Text style={styles.emptyText}>No logs yet</Text>
+            <Text style={styles.emptySubtext}>Load a stream to start debugging</Text>
+          </View>
+        ) : (
+          <View style={styles.logsInline}>
+            {/* Only render last 100 logs for performance, full list available via export */}
+            {filteredLogs.slice(-100).map(log => (
+              <LogEntryItem
+                key={log.id}
+                log={log}
+                isExpanded={expandedLogs.has(log.id)}
+                onToggleExpand={toggleLogExpand}
+                onCopy={copyLog}
+                theme={theme}
+                styles={styles}
+              />
+            ))}
+            {filteredLogs.length > 100 && (
+              <Text style={styles.logsHiddenText}>
+                {filteredLogs.length - 100} older logs hidden (export to see all)
+              </Text>
+            )}
+          </View>
+        )
+      }
+
+      {/* Bottom padding for tab bar */}
+      <View style={{ height: 80 }} />
+    </>
+  );
+});
+
+// ============================================================================
 // Main Component
 // ============================================================================
 export default function StreamDebugger() {
@@ -706,11 +923,7 @@ export default function StreamDebugger() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerStatus, setPlayerStatus] = useState<string>('idle');
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [filter, setFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
   const [showPlayer, setShowPlayer] = useState(true);
-  const [autoScroll, setAutoScroll] = useState(false);
-  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const [multiViewMode, setMultiViewMode] = useState(false);
   const [multiViewReloadKey, setMultiViewReloadKey] = useState(0);
   const [isImmersive, setIsImmersive] = useState(false);
@@ -758,32 +971,6 @@ export default function StreamDebugger() {
     setLogs(prev => [...prev, entry].slice(-MAX_LOGS));
   }, []);
 
-  // Stats
-  const logStats = useMemo(() => {
-    const stats = { total: logs.length, error: 0, warn: 0, info: 0, debug: 0 };
-    logs.forEach(log => stats[log.level]++);
-    return stats;
-  }, [logs]);
-
-  // Filtered logs
-  const filteredLogs = useMemo(() => {
-    let result = logs;
-
-    if (categoryFilter !== 'all') {
-      result = result.filter(log => log.category === categoryFilter);
-    }
-
-    if (filter) {
-      const lowerFilter = filter.toLowerCase();
-      result = result.filter(log =>
-        log.message.toLowerCase().includes(lowerFilter) ||
-        log.category.includes(lowerFilter) ||
-        log.level.includes(lowerFilter)
-      );
-    }
-
-    return result;
-  }, [logs, filter, categoryFilter]);
 
   // ============================================================================
   // HTTP Logging
@@ -946,16 +1133,6 @@ export default function StreamDebugger() {
     };
   }, [player, streamUrl, addLog, fetchAndLogStream]);
 
-  // Auto-scroll for ScrollView
-  const lastLogCountRef = useRef(0);
-  useEffect(() => {
-    if (autoScroll && scrollRef.current && filteredLogs.length > lastLogCountRef.current) {
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollToEnd({ animated: false });
-      });
-    }
-    lastLogCountRef.current = filteredLogs.length;
-  }, [filteredLogs.length, autoScroll]);
 
   // Callback for multi-view players to log
   const handleMultiViewLog = useCallback((message: string, level: 'info' | 'error') => {
@@ -1004,40 +1181,6 @@ export default function StreamDebugger() {
     addLog('system', 'info', 'Logs cleared');
   }, [addLog]);
 
-  const exportLogs = useCallback(async () => {
-    const logText = filteredLogs.map(log =>
-      `[${log.time}] [${log.level.toUpperCase()}] [${log.category}] ${log.message}`
-    ).join('\n');
-
-    try {
-      await Share.share({
-        message: logText,
-        title: 'Stream Debug Logs',
-      });
-    } catch {
-      Alert.alert('Export Failed', 'Could not share logs');
-    }
-  }, [filteredLogs]);
-
-  const copyLog = useCallback(async (log: LogEntry) => {
-    try {
-      await Share.share({
-        message: `[${log.time}] [${log.level}] [${log.category}] ${log.message}`,
-      });
-    } catch { }
-  }, []);
-
-  const toggleLogExpand = useCallback((id: string) => {
-    setExpandedLogs(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
 
   const toggleImmersive = useCallback(() => {
     setIsImmersive(v => !v);
@@ -1047,17 +1190,6 @@ export default function StreamDebugger() {
   // ============================================================================
   // Render Helpers
   // ============================================================================
-  const renderCategoryTab = (cat: FilterCategory, label: string) => (
-    <Pressable
-      key={cat}
-      style={[styles.categoryTab, categoryFilter === cat && styles.categoryTabActive]}
-      onPress={() => setCategoryFilter(cat)}
-    >
-      <Text style={[styles.categoryTabText, categoryFilter === cat && styles.categoryTabTextActive]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
 
   const getStatusColor = () => {
     switch (playerStatus) {
@@ -1284,112 +1416,13 @@ export default function StreamDebugger() {
 
                 {/* LOGS TAB - Category Tabs, Log Controls, Logs List */}
                 {activeMainTab === 'logs' && (
-                  <>
-                    {/* Stats Bar */}
-                    <View style={styles.statsBar}>
-                      <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{logStats.total}</Text>
-                        <Text style={styles.statLabel}>Total</Text>
-                      </View>
-                      <View style={styles.statDivider} />
-                      <View style={styles.statItem}>
-                        <Text style={[styles.statValue, { color: theme.accent.error }]}>{logStats.error}</Text>
-                        <Text style={styles.statLabel}>Errors</Text>
-                      </View>
-                      <View style={styles.statDivider} />
-                      <View style={styles.statItem}>
-                        <Text style={[styles.statValue, { color: theme.accent.warning }]}>{logStats.warn}</Text>
-                        <Text style={styles.statLabel}>Warns</Text>
-                      </View>
-                      <View style={styles.statDivider} />
-                      <View style={styles.statItem}>
-                        <Text style={[styles.statValue, { color: theme.accent.info }]}>{logStats.info}</Text>
-                        <Text style={styles.statLabel}>Info</Text>
-                      </View>
-                    </View>
-
-                    {/* Category Tabs */}
-                    <View style={styles.categoryTabs}>
-                      {renderCategoryTab('all', 'All')}
-                      {renderCategoryTab('http', 'HTTP')}
-                      {renderCategoryTab('player', 'Player')}
-                      {renderCategoryTab('system', 'System')}
-                    </View>
-
-                    {/* Log Controls */}
-                    <View style={styles.logControls}>
-                      <View style={styles.filterRow}>
-                        <Ionicons name="search" size={16} color={theme.text.muted} />
-                        <TextInput
-                          style={styles.filterInput}
-                          placeholder="Filter logs..."
-                          placeholderTextColor={theme.text.muted}
-                          value={filter}
-                          onChangeText={setFilter}
-                        />
-                        {filter !== '' && (
-                          <Pressable onPress={() => setFilter('')}>
-                            <Ionicons name="close-circle" size={18} color={theme.text.muted} />
-                          </Pressable>
-                        )}
-                      </View>
-                      <View style={styles.logActions}>
-                        <Pressable
-                          style={[styles.autoScrollBtn, autoScroll && styles.autoScrollBtnActive]}
-                          onPress={() => setAutoScroll(v => !v)}
-                        >
-                          <Ionicons
-                            name={autoScroll ? 'play' : 'pause'}
-                            size={12}
-                            color={autoScroll ? theme.accent.success : theme.text.muted}
-                          />
-                          <Text style={[styles.autoScrollText, autoScroll && styles.autoScrollTextActive]}>
-                            {autoScroll ? 'Following' : 'Paused'}
-                          </Text>
-                        </Pressable>
-                        <Pressable style={styles.actionBtn} onPress={exportLogs}>
-                          <Ionicons name="share-outline" size={16} color={theme.text.secondary} />
-                        </Pressable>
-                        <Pressable style={styles.actionBtn} onPress={clearLogs}>
-                          <Ionicons name="trash-outline" size={16} color={theme.accent.error} />
-                        </Pressable>
-                      </View>
-                    </View>
-
-                    {/* Logs - Limited render for performance */}
-                    {
-                      filteredLogs.length === 0 ? (
-                        <View style={styles.emptyState}>
-                          <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
-                          <Text style={styles.emptyText}>No logs yet</Text>
-                          <Text style={styles.emptySubtext}>Load a stream to start debugging</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.logsInline}>
-                          {/* Only render last 100 logs for performance, full list available via export */}
-                          {filteredLogs.slice(-100).map(log => (
-                            <LogEntryItem
-                              key={log.id}
-                              log={log}
-                              isExpanded={expandedLogs.has(log.id)}
-                              onToggleExpand={toggleLogExpand}
-                              onCopy={copyLog}
-                              theme={theme}
-                              styles={styles}
-                            />
-                          ))}
-                          {filteredLogs.length > 100 && (
-                            <Text style={styles.logsHiddenText}>
-                              {filteredLogs.length - 100} older logs hidden (export to see all)
-                            </Text>
-                          )}
-                        </View>
-                      )
-                    }
-
-                    {/* Bottom padding for tab bar */}
-                    <View style={{ height: 80 }} />
-                  </>
+                  <LogsTabContent
+                    logs={logs}
+                    clearLogs={clearLogs}
+                    theme={theme}
+                    styles={styles}
+                    scrollRef={scrollRef}
+                  />
                 )}
 
 
