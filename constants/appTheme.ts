@@ -54,10 +54,58 @@ export const defaultTheme = {
 
 // Theme type is now defined explicitly above
 
+export const darkTheme: Theme = {
+  isDark: true,
+  bg: {
+    primary: '#0a0a0f',
+    secondary: '#101018',
+    tertiary: '#18181f',
+    card: '#141420',
+    elevated: '#1c1c28',
+  },
+  accent: {
+    primary: '#818cf8',
+    success: '#34d399',
+    warning: '#fbbf24',
+    error: '#f87171',
+    info: '#60a5fa',
+  },
+  text: {
+    primary: '#f8fafc',
+    secondary: '#94a3b8',
+    muted: '#64748b',
+  },
+  border: '#252535',
+};
+
+export const lightTheme: Theme = {
+  isDark: false,
+  bg: {
+    primary: '#ffffff',
+    secondary: '#f8fafc',
+    tertiary: '#f1f5f9',
+    card: '#ffffff',
+    elevated: '#f8fafc',
+  },
+  accent: {
+    primary: '#6366f1',
+    success: '#10b981',
+    warning: '#f59e0b',
+    error: '#ef4444',
+    info: '#3b82f6',
+  },
+  text: {
+    primary: '#0f172a',
+    secondary: '#475569',
+    muted: '#94a3b8',
+  },
+  border: '#e2e8f0',
+};
+
 /**
  * Hook to get the current app theme.
- * Uses Material 3 dynamic colors on Android 12+ if available.
- * Falls back to default dark theme on iOS or older Android.
+ * Returns stable theme constants to prevent unnecessary re-renders of components
+ * that depend on the theme object for styles or other memoized calculations.
  */
 export function useAppTheme(mode?: 'system' | 'light' | 'dark'): Theme {
   const systemColorScheme = useColorScheme();
@@ -67,58 +115,7 @@ export function useAppTheme(mode?: 'system' | 'light' | 'dark'): Theme {
   const effectiveScheme = isSystem ? systemColorScheme : mode;
   const isDark = effectiveScheme === 'dark';
 
-  // Use simple, reliable light/dark themes
-  if (isDark) {
-    // Dark theme
-    return {
-      isDark: true,
-      bg: {
-        primary: '#0a0a0f',
-        secondary: '#101018',
-        tertiary: '#18181f',
-        card: '#141420',
-        elevated: '#1c1c28',
-      },
-      accent: {
-        primary: '#818cf8',
-        success: '#34d399',
-        warning: '#fbbf24',
-        error: '#f87171',
-        info: '#60a5fa',
-      },
-      text: {
-        primary: '#f8fafc',
-        secondary: '#94a3b8',
-        muted: '#64748b',
-      },
-      border: '#252535',
-    };
-  } else {
-    // Light theme
-    return {
-      isDark: false,
-      bg: {
-        primary: '#ffffff',
-        secondary: '#f8fafc',
-        tertiary: '#f1f5f9',
-        card: '#ffffff',
-        elevated: '#f8fafc',
-      },
-      accent: {
-        primary: '#6366f1',
-        success: '#10b981',
-        warning: '#f59e0b',
-        error: '#ef4444',
-        info: '#3b82f6',
-      },
-      text: {
-        primary: '#0f172a',
-        secondary: '#475569',
-        muted: '#94a3b8',
-      },
-      border: '#e2e8f0',
-    };
-  }
+  return isDark ? darkTheme : lightTheme;
 }
 
 // Keep a static export for non-component usage (fallback)
