@@ -36,13 +36,6 @@ interface NetworkQualityIndicatorProps {
 const TARGET_BUFFER_SECONDS = 10; // Target buffer for VOD
 const TARGET_LIVE_BUFFER_SECONDS = 4; // Target buffer for live
 
-const QUALITY_THRESHOLDS = {
-  excellent: { minBitrate: 8_000_000, maxLatency: 50, maxBufferRatio: 0.8 },
-  good: { minBitrate: 4_000_000, maxLatency: 100, maxBufferRatio: 0.6 },
-  fair: { minBitrate: 1_500_000, maxLatency: 200, maxBufferRatio: 0.4 },
-  poor: { minBitrate: 0, maxLatency: Infinity, maxBufferRatio: 0 },
-};
-
 const QUALITY_COLORS = qualityColors;
 
 const QUALITY_LABELS: Record<NetworkQuality, string> = {
@@ -183,21 +176,21 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
     };
   }, [currentTime, isPlaying]);
 
-  // Report stats to parent
+  // Report stats to parent - only if callback is provided
   useEffect(() => {
-    if (onStatsUpdate) {
-      const stats: NetworkStats = {
-        quality,
-        downloadSpeed: bitrate,
-        latency: latency !== null ? latency * 1000 : null, // Convert to ms
-        packetLoss: null, // Not available from expo-video
-        jitter: null, // Not available from expo-video
-        bufferHealth,
-        stallCount,
-        lastStallDuration,
-      };
-      onStatsUpdate(stats);
-    }
+    if (!onStatsUpdate) return;
+
+    const stats: NetworkStats = {
+      quality,
+      downloadSpeed: bitrate,
+      latency: latency !== null ? latency * 1000 : null, // Convert to ms
+      packetLoss: null, // Not available from expo-video
+      jitter: null, // Not available from expo-video
+      bufferHealth,
+      stallCount,
+      lastStallDuration,
+    };
+    onStatsUpdate(stats);
   }, [quality, bitrate, latency, bufferHealth, stallCount, lastStallDuration, onStatsUpdate]);
 
   const color = QUALITY_COLORS[quality];
