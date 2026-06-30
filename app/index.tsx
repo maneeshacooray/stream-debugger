@@ -128,6 +128,15 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
     onCopy(log);
   }, [onCopy, log]);
 
+  // Memoize level and category styles to avoid inline object creation during high-frequency log updates
+  const levelStyle = useMemo(() => ({
+    backgroundColor: logColors[log.level] + '25'
+  }), [log.level]);
+
+  const categoryStyle = useMemo(() => ({
+    backgroundColor: categoryColors[log.category] + '15'
+  }), [log.category]);
+
   return (
     <Pressable
       style={[styles.logEntry, log.level === 'error' && styles.logEntryError]}
@@ -136,12 +145,12 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
     >
       <View style={styles.logHeader}>
         <Text style={styles.logTime}>{log.time}</Text>
-        <View style={[styles.logLevel, { backgroundColor: logColors[log.level] + '25' }]}>
+        <View style={[styles.logLevel, levelStyle]}>
           <Text style={[styles.logLevelText, { color: logColors[log.level] }]}>
             {log.level.toUpperCase()}
           </Text>
         </View>
-        <View style={[styles.logCategory, { backgroundColor: categoryColors[log.category] + '15' }]}>
+        <View style={[styles.logCategory, categoryStyle]}>
           <Text style={[styles.logCategoryText, { color: categoryColors[log.category] }]}>
             {log.category}
           </Text>
@@ -445,34 +454,68 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
     if (!player) return;
 
     const listener = player.addListener('timeUpdate', ({ currentTime, bufferedPosition, currentOffsetFromLive }: { currentTime: number; bufferedPosition: number; currentOffsetFromLive: number | null }) => {
-      setVideoStats(prev => ({
-        ...prev,
-        currentTime,
-        bufferedPosition,
-        duration: player.duration,
-        isLive: player.isLive,
-        currentOffsetFromLive,
-        playbackRate: player.playbackRate,
-        volume: player.volume,
-        muted: player.muted,
-        videoTrack: player.videoTrack ? {
-          width: player.videoTrack.size.width,
-          height: player.videoTrack.size.height,
-          bitrate: player.videoTrack.bitrate,
-          frameRate: player.videoTrack.frameRate,
-          mimeType: player.videoTrack.mimeType,
-        } : null,
-        audioTrack: player.audioTrack ? {
-          label: player.audioTrack.label,
-          language: player.audioTrack.language,
-        } : null,
-      }));
+      setVideoStats(prev => {
+        // Optimization: Check if fast-changing values actually changed significantly (time updates are 500ms)
+        // or if player state changed. We use 0.1s threshold for time.
+        const timeChanged = Math.abs(prev.currentTime - currentTime) > 0.1 ||
+          Math.abs(prev.bufferedPosition - bufferedPosition) > 0.1 ||
+          prev.currentOffsetFromLive !== currentOffsetFromLive;
+
+        // Check if track metadata changed to avoid unnecessary object re-allocation
+        const videoTrackChanged = (player.videoTrack && (!prev.videoTrack ||
+          player.videoTrack.bitrate !== prev.videoTrack.bitrate ||
+          player.videoTrack.size.width !== prev.videoTrack.width)) ||
+          (!player.videoTrack && prev.videoTrack);
+
+        const audioTrackChanged = (player.audioTrack && (!prev.audioTrack ||
+          player.audioTrack.label !== prev.audioTrack.label)) ||
+          (!player.audioTrack && prev.audioTrack);
+
+        const playerStateChanged = prev.duration !== player.duration ||
+          prev.isLive !== player.isLive ||
+          prev.playbackRate !== player.playbackRate ||
+          prev.volume !== player.volume ||
+          prev.muted !== player.muted;
+
+        if (!timeChanged && !videoTrackChanged && !audioTrackChanged && !playerStateChanged) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          currentTime,
+          bufferedPosition,
+          duration: player.duration,
+          isLive: player.isLive,
+          currentOffsetFromLive,
+          playbackRate: player.playbackRate,
+          volume: player.volume,
+          muted: player.muted,
+          videoTrack: player.videoTrack ? {
+            width: player.videoTrack.size.width,
+            height: player.videoTrack.size.height,
+            bitrate: player.videoTrack.bitrate,
+            frameRate: player.videoTrack.frameRate,
+            mimeType: player.videoTrack.mimeType,
+          } : null,
+          audioTrack: player.audioTrack ? {
+            label: player.audioTrack.label,
+            language: player.audioTrack.language,
+          } : null,
+        };
+      });
     });
 
     return () => {
       listener?.remove();
     };
   }, [player]);
+
+  // Memoize codec info to avoid redundant object creation and parsing on every render
+  const codecInfo = useMemo(() =>
+    parseCodecName(videoStats.videoTrack?.mimeType ?? null, theme),
+    [videoStats.videoTrack?.mimeType, theme]
+  );
 
   return (
     <>
@@ -549,9 +592,9 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
                 <View style={[styles.videoStatBox, styles.codecBox]}>
                   <Text style={styles.videoStatLabel}>Codec</Text>
                   <View style={styles.codecBadgeRow}>
-                    <View style={[styles.codecBadge, { backgroundColor: parseCodecName(videoStats.videoTrack.mimeType, theme).color + '25', borderColor: parseCodecName(videoStats.videoTrack.mimeType, theme).color }]}>
-                      <Text style={[styles.codecBadgeText, { color: parseCodecName(videoStats.videoTrack.mimeType, theme).color }]}>
-                        {parseCodecName(videoStats.videoTrack.mimeType, theme).name}
+                    <View style={[styles.codecBadge, { backgroundColor: codecInfo.color + '25', borderColor: codecInfo.color }]}>
+                      <Text style={[styles.codecBadgeText, { color: codecInfo.color }]}>
+                        {codecInfo.name}
                       </Text>
                     </View>
                   </View>
@@ -608,7 +651,7 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
                 <View style={[styles.videoStatBox, { flex: 1 }]}>
                   <Text style={styles.videoStatLabel}>Full Codec</Text>
                   <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
-                    {parseCodecName(videoStats.videoTrack.mimeType, theme).fullName} - {videoStats.videoTrack.mimeType}
+                    {codecInfo.fullName} - {videoStats.videoTrack.mimeType}
                   </Text>
                 </View>
               </View>
