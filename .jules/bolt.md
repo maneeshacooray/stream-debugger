@@ -15,3 +15,9 @@
 **Learning:** Even when high-frequency state is isolated in a sub-component, triggering a re-render every 500ms (standard for video time updates) can still be costly if the component performs expensive calculations or object allocations. React's reconciliation still runs, and many objects are recreated.
 
 **Action:** Implement a bail-out strategy in high-frequency listeners (like `timeUpdate`). Skip state updates if fast-changing values (like `currentTime`) have changed by less than a threshold (e.g., 100ms) and metadata (tracks, status) remains unchanged. Memoize secondary computations (like codec parsing) that depend on this state.
+
+## 2026-06-30 - Optimizing style allocations in high-frequency lists
+
+**Learning:** `LogEntryItem` was allocating style objects for background colors (levels and categories) inside every instance, even when memoized. In high-frequency log paths, this creates significant garbage collection pressure. React Native's `StyleSheet` is optimized for static style objects.
+
+**Action:** Pre-calculate all theme-aware style variants (like log levels and categories) within the central `createStyles` function. Child components can then consume these via stable keys (e.g., `styles[\`logLevel_\${log.level}\`]`), eliminating per-render or per-instance object creation and reducing memory churn.

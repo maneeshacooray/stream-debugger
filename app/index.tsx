@@ -118,6 +118,12 @@ interface LogEntryProps {
 }
 
 const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpand, onCopy, theme, styles }: LogEntryProps) {
+  /**
+   * Performance optimization: LogEntryItem uses pre-calculated, theme-aware styles
+   * from the central StyleSheet instead of allocating new style objects or
+   * using useMemo for calculations within each instance. This significantly reduces
+   * memory allocation and CPU overhead during high-frequency log updates (up to 500ms).
+   */
   const isMultiline = log.message.includes('\n') || log.message.length > 80;
 
   const handlePress = useCallback(() => {
@@ -128,15 +134,6 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
     onCopy(log);
   }, [onCopy, log]);
 
-  // Memoize level and category styles to avoid inline object creation during high-frequency log updates
-  const levelStyle = useMemo(() => ({
-    backgroundColor: logColors[log.level] + '25'
-  }), [log.level]);
-
-  const categoryStyle = useMemo(() => ({
-    backgroundColor: categoryColors[log.category] + '15'
-  }), [log.category]);
-
   return (
     <Pressable
       style={[styles.logEntry, log.level === 'error' && styles.logEntryError]}
@@ -145,13 +142,13 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
     >
       <View style={styles.logHeader}>
         <Text style={styles.logTime}>{log.time}</Text>
-        <View style={[styles.logLevel, levelStyle]}>
-          <Text style={[styles.logLevelText, { color: logColors[log.level] }]}>
+        <View style={[styles.logLevel, styles[`logLevel_${log.level}`]]}>
+          <Text style={[styles.logLevelText, styles[`logLevelText_${log.level}`]]}>
             {log.level.toUpperCase()}
           </Text>
         </View>
-        <View style={[styles.logCategory, categoryStyle]}>
-          <Text style={[styles.logCategoryText, { color: categoryColors[log.category] }]}>
+        <View style={[styles.logCategory, styles[`logCategory_${log.category}`]]}>
+          <Text style={[styles.logCategoryText, styles[`logCategoryText_${log.category}`]]}>
             {log.category}
           </Text>
         </View>
@@ -2061,6 +2058,22 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   logMessageError: {
     color: theme.accent.error,
   },
+  // Log level styles
+  logLevel_info: { backgroundColor: logColors.info + '25' },
+  logLevel_warn: { backgroundColor: logColors.warn + '25' },
+  logLevel_error: { backgroundColor: logColors.error + '25' },
+  logLevel_debug: { backgroundColor: logColors.debug + '25' },
+  logLevelText_info: { color: logColors.info },
+  logLevelText_warn: { color: logColors.warn },
+  logLevelText_error: { color: logColors.error },
+  logLevelText_debug: { color: logColors.debug },
+  // Log category styles
+  logCategory_http: { backgroundColor: categoryColors.http + '15' },
+  logCategory_player: { backgroundColor: categoryColors.player + '15' },
+  logCategory_system: { backgroundColor: categoryColors.system + '15' },
+  logCategoryText_http: { color: categoryColors.http },
+  logCategoryText_player: { color: categoryColors.player },
+  logCategoryText_system: { color: categoryColors.system },
   // New Immersive Styles
   playerSectionImmersive: {
     flex: 1,
