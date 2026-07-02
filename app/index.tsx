@@ -746,6 +746,12 @@ const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, st
     return result;
   }, [logs, filter, categoryFilter]);
 
+  /**
+   * Performance optimization: Memoize the visible slice of logs to prevent redundant
+   * array allocations on every render of LogsTabContent (e.g. during auto-scroll).
+   */
+  const visibleLogs = useMemo(() => filteredLogs.slice(-100), [filteredLogs]);
+
   // Auto-scroll for ScrollView
   const lastLogCountRef = useRef(0);
   useEffect(() => {
@@ -888,7 +894,7 @@ const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, st
         ) : (
           <View style={styles.logsInline}>
             {/* Only render last 100 logs for performance, full list available via export */}
-            {filteredLogs.slice(-100).map(log => (
+            {visibleLogs.map(log => (
               <LogEntryItem
                 key={log.id}
                 log={log}
@@ -936,6 +942,25 @@ export default function StreamDebugger() {
 
   const theme = useAppTheme(settings.themeMode);
   const styles = useMemo(() => createStyles(theme), [theme]);
+
+  /**
+   * Performance optimization: Memoize the multi-view grid calculation
+   * to prevent redundant processing during frequent re-renders.
+   * Moved here from the render block to follow React Hook rules.
+   */
+  const multiViewStreams = getMultiViewStreams();
+  const multiViewGrid = useMemo(() => {
+    const gridRows: StreamConfig[][] = [];
+    // Calculate how many columns to show based on width
+    let cols = 2;
+    if (width >= 1024) cols = 4;
+    else if (width >= 768 || (isLandscape && width >= 600)) cols = 3;
+
+    for (let i = 0; i < multiViewStreams.length; i += cols) {
+      gridRows.push(multiViewStreams.slice(i, i + cols));
+    }
+    return { rows: gridRows, columns: cols };
+  }, [multiViewStreams, width, isLandscape]);
 
   // Manage screen focus - pause player when leaving, resume when returning
   useFocusEffect(
@@ -999,16 +1024,32 @@ export default function StreamDebugger() {
   // ============================================================================
   const addLog = useCallback((category: LogCategory, level: LogLevel, message: string) => {
     const now = new Date();
+
+    /**
+     * Performance optimization: Manual time formatting is significantly faster than
+     * toLocaleTimeString, which is expensive due to locale-aware processing.
+     * This is critical during high-frequency logging.
+     */
+    const h = now.getHours().toString().padStart(2, '0');
+    const m = now.getMinutes().toString().padStart(2, '0');
+    const s = now.getSeconds().toString().padStart(2, '0');
+    const ms = now.getMilliseconds().toString().padStart(3, '0');
+    const timeString = `${h}:${m}:${s}.${ms}`;
+
     const entry: LogEntry = {
       id: `${now.getTime()}-${++logIdRef.current}`,
       timestamp: now.getTime(),
-      time: now.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0'),
+      time: timeString,
       level,
       category,
       message,
     };
 
-    setLogs(prev => [...prev, entry].slice(-MAX_LOGS));
+    setLogs(prev => {
+      const next = [...prev, entry];
+      // Optimization: Only slice if we exceed the limit to avoid redundant array creation
+      return next.length > MAX_LOGS ? next.slice(-MAX_LOGS) : next;
+    });
   }, []);
 
 
@@ -1390,41 +1431,27 @@ export default function StreamDebugger() {
                   <Text style={styles.multiViewReloadBtnText}>Reload all</Text>
                 </Pressable>
               </View>
-              {(() => {
-                const multiViewStreams = getMultiViewStreams();
-                const rows: StreamConfig[][] = [];
-                // Calculate how many columns to show based on width
-                let columns = 2;
-                if (width >= 1024) columns = 4;
-                else if (width >= 768 || (isLandscape && width >= 600)) columns = 3;
-
-                for (let i = 0; i < multiViewStreams.length; i += columns) {
-                  rows.push(multiViewStreams.slice(i, i + columns));
-                }
-                return (
-                  <View key={multiViewReloadKey} style={{ gap: 8 }}>
-                    {rows.map((row, rowIndex) => (
-                      <View key={`row-${rowIndex}`} style={styles.multiViewRow}>
-                        {row.map((stream) => (
-                          <MultiViewPlayer
-                            key={`stream-${stream.id}`}
-                            streamUrl={stream.url}
-                            label={stream.name}
-                            onLog={handleMultiViewLog}
-                            onPress={() => handleMultiViewPress(stream)}
-                            theme={theme}
-                            styles={styles}
-                          />
-                        ))}
-                        {/* Fill empty spots in the last row to maintain grid alignment */}
-                        {Array.from({ length: columns - row.length }).map((_, i) => (
-                          <View key={`empty-${rowIndex}-${i}`} style={{ flex: 1 }} />
-                        ))}
-                      </View>
+              <View key={multiViewReloadKey} style={{ gap: 8 }}>
+                {multiViewGrid.rows.map((row, rowIndex) => (
+                  <View key={`row-${rowIndex}`} style={styles.multiViewRow}>
+                    {row.map((stream) => (
+                      <MultiViewPlayer
+                        key={`stream-${stream.id}`}
+                        streamUrl={stream.url}
+                        label={stream.name}
+                        onLog={handleMultiViewLog}
+                        onPress={() => handleMultiViewPress(stream)}
+                        theme={theme}
+                        styles={styles}
+                      />
+                    ))}
+                    {/* Fill empty spots in the last row to maintain grid alignment */}
+                    {Array.from({ length: multiViewGrid.columns - row.length }).map((_, i) => (
+                      <View key={`empty-${rowIndex}-${i}`} style={{ flex: 1 }} />
                     ))}
                   </View>
-                );
-              })()}
+                ))}
+              </View>
             </View>
           )}
         </View>
