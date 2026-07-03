@@ -21,3 +21,9 @@
 **Learning:** `LogEntryItem` was allocating style objects for background colors (levels and categories) inside every instance, even when memoized. In high-frequency log paths, this creates significant garbage collection pressure. React Native's `StyleSheet` is optimized for static style objects.
 
 **Action:** Pre-calculate all theme-aware style variants (like log levels and categories) within the central `createStyles` function. Child components can then consume these via stable keys (e.g., `styles[\`logLevel_\${log.level}\`]`), eliminating per-render or per-instance object creation and reducing memory churn.
+
+## 2026-07-02 - High-frequency logging bottlenecks
+
+**Learning:** Found that `toLocaleTimeString` is extremely expensive in high-frequency update paths (like log streams) due to locale-aware processing. Additionally, performing array operations like `slice(-100)` directly in the render block or IIFEs creates unnecessary allocations and CPU overhead on every render cycle.
+
+**Action:** Replace `toLocaleTimeString` with manual string formatting for timestamps in hot paths. Memoize the visible slice of lists (using `useMemo`) before rendering to maintain reference stability and reduce garbage collection pressure.
