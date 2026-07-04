@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 // ============================================================================
 // Types
@@ -495,7 +495,7 @@ export function useStreamConfig() {
     refresh();
   }, [refresh]);
 
-  return {
+  return useMemo(() => ({
     isLoading,
     streams,
     settings,
@@ -521,5 +521,26 @@ export function useStreamConfig() {
     clearAllData,
     // Utility
     refresh,
-  };
+  }), [
+    isLoading,
+    streams,
+    settings,
+    addStream,
+    updateStream,
+    deleteStream,
+    toggleFavorite,
+    recordUsage,
+    setDefaultStream,
+    setMultiViewStreams,
+    setMaxMultiViewStreams,
+    setThemeMode,
+    getDefaultStream,
+    getFavoriteStreams,
+    getMultiViewStreams,
+    getStreamById,
+    exportData,
+    importData,
+    clearAllData,
+    refresh,
+  ]);
 }
