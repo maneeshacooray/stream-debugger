@@ -946,10 +946,12 @@ export default function StreamDebugger() {
   /**
    * Performance optimization: Memoize the multi-view grid calculation
    * to prevent redundant processing during frequent re-renders.
-   * Moved here from the render block to follow React Hook rules.
+   * We call getMultiViewStreams() inside useMemo because it returns a new array
+   * on every call, which would otherwise break the memoization if passed
+   * directly in the dependency array.
    */
-  const multiViewStreams = getMultiViewStreams();
   const multiViewGrid = useMemo(() => {
+    const multiViewStreams = getMultiViewStreams();
     const gridRows: StreamConfig[][] = [];
     // Calculate how many columns to show based on width
     let cols = 2;
@@ -960,7 +962,7 @@ export default function StreamDebugger() {
       gridRows.push(multiViewStreams.slice(i, i + cols));
     }
     return { rows: gridRows, columns: cols };
-  }, [multiViewStreams, width, isLandscape]);
+  }, [getMultiViewStreams, width, isLandscape]);
 
   // Manage screen focus - pause player when leaving, resume when returning
   useFocusEffect(
