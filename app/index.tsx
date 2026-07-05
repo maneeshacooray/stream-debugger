@@ -5,7 +5,6 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Dimensions,
   Keyboard,
   Platform,
   Pressable,
@@ -38,8 +37,6 @@ import { categoryColors, logColors, Theme, useAppTheme } from '../constants/appT
 // Constants
 // ============================================================================
 const MAX_LOGS = 500;
-const LOG_ITEM_HEIGHT = 72; // Approximate height for FlatList optimization
-const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // ============================================================================
 // Types
@@ -187,6 +184,178 @@ const MAIN_TABS: MainTabItem[] = [
   { id: 'playlist', label: 'Playlist', icon: 'list-outline' },
   { id: 'logs', label: 'Logs', icon: 'terminal-outline' },
 ];
+
+// ============================================================================
+// Header Component
+// ============================================================================
+interface HeaderProps {
+  onShowAbout: () => void;
+  playerStatus: string;
+  onTogglePlayer: () => void;
+  showPlayer: boolean;
+  isLargeScreen: boolean;
+  multiViewMode: boolean;
+  onToggleMultiView: () => void;
+  onOpenSettings: () => void;
+  theme: Theme;
+  styles: any;
+}
+
+/**
+ * Memoized Header component to prevent re-renders when high-frequency updates
+ * (like video stats or logs) occur in other parts of the application.
+ */
+const Header = memo(function Header({
+  onShowAbout,
+  playerStatus,
+  onTogglePlayer,
+  showPlayer,
+  isLargeScreen,
+  multiViewMode,
+  onToggleMultiView,
+  onOpenSettings,
+  theme,
+  styles
+}: HeaderProps) {
+  const getStatusColor = () => {
+    switch (playerStatus) {
+      case 'readyToPlay': return theme.accent.success;
+      case 'loading': return theme.accent.warning;
+      case 'error': return theme.accent.error;
+      default: return theme.text.muted;
+    }
+  };
+
+  const statusColor = getStatusColor();
+
+  return (
+    <View style={styles.header}>
+      <Pressable style={styles.headerLeft} onPress={onShowAbout} hitSlop={8}>
+        <Ionicons name="bug" size={24} color={theme.accent.primary} />
+        <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Stream Debugger</Text>
+      </Pressable>
+      <View style={styles.headerRight}>
+        <Pressable
+          style={[styles.statusBadge, { backgroundColor: statusColor + '20', borderColor: statusColor }]}
+          onPress={onTogglePlayer}
+        >
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{playerStatus}</Text>
+          {!isLargeScreen && <Ionicons name={showPlayer ? 'chevron-up' : 'chevron-down'} size={14} color={statusColor} />}
+        </Pressable>
+        <Pressable
+          style={[styles.settingsBtn, multiViewMode && { backgroundColor: theme.accent.primary + '20', borderRadius: 8 }]}
+          onPress={onToggleMultiView}
+        >
+          <Ionicons
+            name={multiViewMode ? 'grid' : 'grid-outline'}
+            size={22}
+            color={multiViewMode ? theme.accent.primary : theme.text.secondary}
+          />
+        </Pressable>
+        <Pressable style={styles.settingsBtn} onPress={onOpenSettings}>
+          <Ionicons name="settings-outline" size={22} color={theme.text.secondary} />
+        </Pressable>
+      </View>
+    </View>
+  );
+});
+
+// ============================================================================
+// Quick Access Bar Component
+// ============================================================================
+interface QuickAccessBarProps {
+  favoriteStreams: StreamConfig[];
+  currentStreamId: string | null;
+  onLoadStream: (stream: StreamConfig) => void;
+  styles: any;
+}
+
+/**
+ * Memoized QuickAccessBar to prevent re-renders during playback or logging.
+ */
+const QuickAccessBar = memo(function QuickAccessBar({
+  favoriteStreams,
+  currentStreamId,
+  onLoadStream,
+  styles
+}: QuickAccessBarProps) {
+  if (favoriteStreams.length === 0) return null;
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.quickAccessBar}
+    >
+      {favoriteStreams.map(stream => (
+        <Pressable
+          key={stream.id}
+          style={[
+            styles.quickAccessBtn,
+            currentStreamId === stream.id && styles.quickAccessBtnActive,
+          ]}
+          onPress={() => onLoadStream(stream)}
+        >
+          {stream.isLive && <View style={styles.liveDotSmall} />}
+          <Text
+            style={[
+              styles.quickAccessText,
+              currentStreamId === stream.id && styles.quickAccessTextActive,
+            ]}
+            numberOfLines={1}
+          >
+            {stream.name}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+});
+
+// ============================================================================
+// URL Input Component
+// ============================================================================
+interface UrlInputProps {
+  onLoad: (url: string) => void;
+  theme: Theme;
+  styles: any;
+}
+
+/**
+ * Performance optimization: Isolates the input state to prevent full-screen
+ * re-renders on every keystroke. Typing in the URL input now only re-renders
+ * this small component instead of the entire application tree.
+ */
+const UrlInput = memo(function UrlInput({ onLoad, theme, styles }: UrlInputProps) {
+  const [inputUrl, setInputUrl] = useState('');
+
+  const handleSubmit = useCallback(() => {
+    if (inputUrl.trim()) {
+      onLoad(inputUrl);
+      setInputUrl('');
+    }
+  }, [inputUrl, onLoad]);
+
+  return (
+    <View style={styles.urlRow}>
+      <TextInput
+        style={styles.urlInput}
+        placeholder="Enter stream URL..."
+        placeholderTextColor={theme.text.muted}
+        value={inputUrl}
+        onChangeText={setInputUrl}
+        onSubmitEditing={handleSubmit}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+      />
+      <Pressable style={styles.urlBtn} onPress={handleSubmit}>
+        <Ionicons name="arrow-forward" size={18} color="#fff" />
+      </Pressable>
+    </View>
+  );
+});
 
 // ============================================================================
 // Main Tab Bar Component
@@ -488,17 +657,17 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           playbackRate: player.playbackRate,
           volume: player.volume,
           muted: player.muted,
-          videoTrack: player.videoTrack ? {
+          videoTrack: videoTrackChanged ? (player.videoTrack ? {
             width: player.videoTrack.size.width,
             height: player.videoTrack.size.height,
             bitrate: player.videoTrack.bitrate,
             frameRate: player.videoTrack.frameRate,
             mimeType: player.videoTrack.mimeType,
-          } : null,
-          audioTrack: player.audioTrack ? {
+          } : null) : prev.videoTrack,
+          audioTrack: audioTrackChanged ? (player.audioTrack ? {
             label: player.audioTrack.label,
             language: player.audioTrack.language,
-          } : null,
+          } : null) : prev.audioTrack,
         };
       });
     });
@@ -934,9 +1103,7 @@ export default function StreamDebugger() {
     settings,
     recordUsage,
     getDefaultStream,
-    getFavoriteStreams,
     getMultiViewStreams,
-    getStreamById,
     refresh: refreshStreams,
   } = useStreamConfig();
 
@@ -986,7 +1153,6 @@ export default function StreamDebugger() {
   // State
   const [streamUrl, setStreamUrl] = useState('');
   const [currentStreamId, setCurrentStreamId] = useState<string | null>(null);
-  const [inputUrl, setInputUrl] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerStatus, setPlayerStatus] = useState<string>('idle');
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -1119,7 +1285,6 @@ export default function StreamDebugger() {
     addLog('system', 'info', `[LOAD] Stream: ${trimmedUrl}`);
     setStreamUrl(trimmedUrl);
     setCurrentStreamId(streamId || null);
-    setInputUrl('');
     // Record usage if we have a stream ID
     if (streamId) {
       recordUsage(streamId);
@@ -1269,19 +1434,19 @@ export default function StreamDebugger() {
     setIsImmersive(v => !v);
   }, []);
 
+  const togglePlayer = useCallback(() => {
+    setShowPlayer(v => !v);
+  }, []);
+
+  const toggleMultiView = useCallback(() => {
+    setMultiViewMode(v => !v);
+  }, []);
+
 
   // ============================================================================
   // Render Helpers
   // ============================================================================
 
-  const getStatusColor = () => {
-    switch (playerStatus) {
-      case 'readyToPlay': return theme.accent.success;
-      case 'loading': return theme.accent.warning;
-      case 'error': return theme.accent.error;
-      default: return theme.text.muted;
-    }
-  };
 
   // ============================================================================
   // Render
@@ -1292,35 +1457,18 @@ export default function StreamDebugger() {
 
       {/* Header - Hidden in Immersive Mode */}
       {!isImmersive && (
-        <View style={styles.header}>
-          <Pressable style={styles.headerLeft} onPress={showAboutDeveloper} hitSlop={8}>
-            <Ionicons name="bug" size={24} color={theme.accent.primary} />
-            <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Stream Debugger</Text>
-          </Pressable>
-          <View style={styles.headerRight}>
-            <Pressable
-              style={[styles.statusBadge, { backgroundColor: getStatusColor() + '20', borderColor: getStatusColor() }]}
-              onPress={() => setShowPlayer(v => !v)}
-            >
-              <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
-              <Text style={[styles.statusText, { color: getStatusColor() }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{playerStatus}</Text>
-              {!isLargeScreen && <Ionicons name={showPlayer ? 'chevron-up' : 'chevron-down'} size={14} color={getStatusColor()} />}
-            </Pressable>
-            <Pressable
-              style={[styles.settingsBtn, multiViewMode && { backgroundColor: theme.accent.primary + '20', borderRadius: 8 }]}
-              onPress={() => setMultiViewMode(v => !v)}
-            >
-              <Ionicons
-                name={multiViewMode ? 'grid' : 'grid-outline'}
-                size={22}
-                color={multiViewMode ? theme.accent.primary : theme.text.secondary}
-              />
-            </Pressable>
-            <Pressable style={styles.settingsBtn} onPress={openSettings}>
-              <Ionicons name="settings-outline" size={22} color={theme.text.secondary} />
-            </Pressable>
-          </View>
-        </View>
+        <Header
+          onShowAbout={showAboutDeveloper}
+          playerStatus={playerStatus}
+          onTogglePlayer={togglePlayer}
+          showPlayer={showPlayer}
+          isLargeScreen={isLargeScreen}
+          multiViewMode={multiViewMode}
+          onToggleMultiView={toggleMultiView}
+          onOpenSettings={openSettings}
+          theme={theme}
+          styles={styles}
+        />
       )}
 
       {/* Main Content Wrapper for Adaptive Layout */}
@@ -1365,56 +1513,25 @@ export default function StreamDebugger() {
                 </View>
 
                 {/* Quick Access - Hidden in Immersive */}
-                {!isImmersive && favoriteStreams.length > 0 && (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.quickAccessBar}
-                  >
-                    {favoriteStreams.map(stream => (
-                      <Pressable
-                        key={stream.id}
-                        style={[
-                          styles.quickAccessBtn,
-                          currentStreamId === stream.id && styles.quickAccessBtnActive,
-                        ]}
-                        onPress={() => loadStreamConfig(stream)}
-                      >
-                        {stream.isLive && <View style={styles.liveDotSmall} />}
-                        <Text
-                          style={[
-                            styles.quickAccessText,
-                            currentStreamId === stream.id && styles.quickAccessTextActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {stream.name}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
+                {!isImmersive && (
+                  <QuickAccessBar
+                    favoriteStreams={favoriteStreams}
+                    currentStreamId={currentStreamId}
+                    onLoadStream={loadStreamConfig}
+                    styles={styles}
+                  />
                 )}
               </View>
 
               {/* URL Input - Hidden in Immersive */}
               {!isImmersive && (
                 <>
-                  <View style={styles.urlRow}>
-                    <TextInput
-                      style={styles.urlInput}
-                      placeholder="Enter stream URL..."
-                      placeholderTextColor={theme.text.muted}
-                      value={inputUrl}
-                      onChangeText={setInputUrl}
-                      onSubmitEditing={() => loadStream(inputUrl)}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                    />
-                    <Pressable style={styles.urlBtn} onPress={() => loadStream(inputUrl)}>
-                      <Ionicons name="arrow-forward" size={18} color="#fff" />
-                    </Pressable>
-                  </View>
+                  <UrlInput
+                    key={streamUrl}
+                    onLoad={loadStream}
+                    theme={theme}
+                    styles={styles}
+                  />
                   <Text style={styles.currentUrl} numberOfLines={1}>{streamUrl}</Text>
                 </>
               )}

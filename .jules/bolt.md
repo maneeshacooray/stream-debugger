@@ -27,3 +27,9 @@
 **Learning:** Found that `toLocaleTimeString` is extremely expensive in high-frequency update paths (like log streams) due to locale-aware processing. Additionally, performing array operations like `slice(-100)` directly in the render block or IIFEs creates unnecessary allocations and CPU overhead on every render cycle.
 
 **Action:** Replace `toLocaleTimeString` with manual string formatting for timestamps in hot paths. Memoize the visible slice of lists (using `useMemo`) before rendering to maintain reference stability and reduce garbage collection pressure.
+
+## 2026-07-04 - Root re-renders from URL input typing
+
+**Learning:** Holding the `inputUrl` state in the root component caused every keystroke to re-render the entire application, including the video player and large log lists. This creates noticeable lag on low-end devices. Wrapping callbacks in `useCallback` is essential when passing them to memoized children to prevent breaking `React.memo`.
+
+**Action:** Isolate text input state into dedicated memoized components. Use the `key` prop to reset internal state when parent dependencies change. Always memoize parent callbacks to ensure referential stability for child component props. Re-use existing sub-object references in state updates unless metadata actually changes to minimize GC pressure.
