@@ -12,6 +12,13 @@ import {
 import { Theme } from '../constants/appTheme';
 
 // ============================================================================
+// Constants & Cache
+// ============================================================================
+const CACHE_TTL_MS = 15000; // 15 seconds
+const MAX_CACHE_SIZE = 50;
+const playlistCache = new Map<string, { data: ParsedPlaylist; timestamp: number }>();
+
+// ============================================================================
 // Types
 // ============================================================================
 interface StreamMetadataProps {
@@ -70,7 +77,12 @@ function formatDuration(seconds: number): string {
 }
 
 function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
-  const lines = content.split('\n').map(l => l.trim()).filter(l => l);
+  /**
+   * Performance optimization: Process the manifest in a single pass over the lines
+   * from a single split. This avoids redundant intermediate array allocations
+   * from .map().filter() chains, which is critical for large VOD playlists.
+   */
+  const lines = content.split('\n');
 
   const result: ParsedPlaylist = {
     type: 'unknown',
@@ -80,20 +92,26 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
     rawContent: content,
   };
 
-  // Check if it's an HLS playlist
-  if (!lines[0]?.startsWith('#EXTM3U')) {
-    return result;
-  }
-
   // Parse tags
   let currentVariant: Partial<VariantStream> | null = null;
   let currentSegmentDuration: number | null = null;
   let currentSegmentTitle: string | undefined;
   let hasDiscontinuity = false;
   let totalDuration = 0;
+  let isFirstLine = true;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    // Check if it's an HLS playlist
+    if (isFirstLine) {
+      isFirstLine = false;
+      if (!line.startsWith('#EXTM3U')) {
+        return result;
+      }
+      continue;
+    }
 
     // Version
     if (line.startsWith('#EXT-X-VERSION:')) {
@@ -222,6 +240,17 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
 
   const fetchPlaylist = useCallback(async (url: string, force = false) => {
     if (!url) return;
+
+    // Check cache first (unless forced refresh)
+    if (!force) {
+      const cached = playlistCache.get(url);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        setPlaylist(cached.data);
+        lastFetchedUrl.current = url;
+        return;
+      }
+    }
+
     if (!force && url === lastFetchedUrl.current) return;
 
     setIsLoading(true);
@@ -241,6 +270,14 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
 
       const content = await response.text();
       const parsed = parseHLSPlaylist(content, url);
+
+      // Update cache (with simple size limit to prevent memory leaks)
+      if (playlistCache.size >= MAX_CACHE_SIZE) {
+        const firstKey = playlistCache.keys().next().value;
+        if (firstKey !== undefined) playlistCache.delete(firstKey);
+      }
+      playlistCache.set(url, { data: parsed, timestamp: Date.now() });
+
       setPlaylist(parsed);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch');

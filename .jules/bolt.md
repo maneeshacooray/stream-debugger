@@ -33,3 +33,15 @@
 **Learning:** Holding the `inputUrl` state in the root component caused every keystroke to re-render the entire application, including the video player and large log lists. This creates noticeable lag on low-end devices. Wrapping callbacks in `useCallback` is essential when passing them to memoized children to prevent breaking `React.memo`.
 
 **Action:** Isolate text input state into dedicated memoized components. Use the `key` prop to reset internal state when parent dependencies change. Always memoize parent callbacks to ensure referential stability for child component props. Re-use existing sub-object references in state updates unless metadata actually changes to minimize GC pressure.
+
+## 2026-07-06 - Intermediate array allocations in manifest parsing
+
+**Learning:** Processing large HLS manifests using chains like `.split().map().filter()` creates multiple intermediate arrays, leading to significant memory pressure and garbage collection overhead, especially in a React Native environment where JS thread performance is critical.
+
+**Action:** Refactor text parsing logic to use a single-pass loop. Split the content only once and handle trimming, empty lines, and validation within the main iteration to minimize object allocations and CPU cycles.
+
+## 2026-07-06 - Redundant re-parsing in tab-based navigation
+
+**Learning:** Components in different tabs (e.g., 'Info' and 'Playlist') often need the same parsed data. Switching between them causes the component to unmount and remount, losing local state and triggering expensive re-fetching and re-parsing of manifests.
+
+**Action:** Implement a module-level cache (e.g., a `Map`) with a Time-To-Live (TTL) and maximum size limit. This allows fast data retrieval across component lifecycles while preventing memory leaks and ensuring data freshness.
