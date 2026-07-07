@@ -1110,27 +1110,6 @@ export default function StreamDebugger() {
   const theme = useAppTheme(settings.themeMode);
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  /**
-   * Performance optimization: Memoize the multi-view grid calculation
-   * to prevent redundant processing during frequent re-renders.
-   * We call getMultiViewStreams() inside useMemo because it returns a new array
-   * on every call, which would otherwise break the memoization if passed
-   * directly in the dependency array.
-   */
-  const multiViewGrid = useMemo(() => {
-    const multiViewStreams = getMultiViewStreams();
-    const gridRows: StreamConfig[][] = [];
-    // Calculate how many columns to show based on width
-    let cols = 2;
-    if (width >= 1024) cols = 4;
-    else if (width >= 768 || (isLandscape && width >= 600)) cols = 3;
-
-    for (let i = 0; i < multiViewStreams.length; i += cols) {
-      gridRows.push(multiViewStreams.slice(i, i + cols));
-    }
-    return { rows: gridRows, columns: cols };
-  }, [getMultiViewStreams, width, isLandscape]);
-
   // Manage screen focus - pause player when leaving, resume when returning
   useFocusEffect(
     useCallback(() => {
@@ -1161,6 +1140,27 @@ export default function StreamDebugger() {
   const [multiViewReloadKey, setMultiViewReloadKey] = useState(0);
   const [isImmersive, setIsImmersive] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<MainTabId>('info');
+
+  /**
+   * Performance optimization: Memoize the multi-view grid calculation.
+   * By adding multiViewMode as a dependency and an early return, we avoid
+   * redundant processing and array allocations when multi-view is disabled.
+   */
+  const multiViewGrid = useMemo(() => {
+    if (!multiViewMode) return { rows: [], columns: 0 };
+
+    const multiViewStreams = getMultiViewStreams();
+    const gridRows: StreamConfig[][] = [];
+    // Calculate how many columns to show based on width
+    let cols = 2;
+    if (width >= 1024) cols = 4;
+    else if (width >= 768 || (isLandscape && width >= 600)) cols = 3;
+
+    for (let i = 0; i < multiViewStreams.length; i += cols) {
+      gridRows.push(multiViewStreams.slice(i, i + cols));
+    }
+    return { rows: gridRows, columns: cols };
+  }, [getMultiViewStreams, width, isLandscape, multiViewMode]);
 
   // Get favorite streams for quick access bar - filter directly from streams state
   const favoriteStreams = useMemo(() => {
@@ -1214,9 +1214,14 @@ export default function StreamDebugger() {
     };
 
     setLogs(prev => {
-      const next = [...prev, entry];
-      // Optimization: Only slice if we exceed the limit to avoid redundant array creation
-      return next.length > MAX_LOGS ? next.slice(-MAX_LOGS) : next;
+      /**
+       * Performance optimization: Reduce array allocations and copies.
+       * Instead of [...prev, entry].slice(-MAX_LOGS) which copies elements twice,
+       * we slice first (if at limit) and then push, or just copy once and push.
+       */
+      const next = prev.length >= MAX_LOGS ? prev.slice(1) : [...prev];
+      next.push(entry);
+      return next;
     });
   }, []);
 
@@ -1613,7 +1618,7 @@ export default function StreamDebugger() {
 
 
                 {/* PLAYLIST TAB - Playlist Viewer */}
-                {activeMainTab === 'playlist' as any && (
+                {activeMainTab === 'playlist' && (
                   <StreamMetadata streamUrl={streamUrl} theme={theme} standalone={true} />
                 )}
 
