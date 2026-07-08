@@ -39,10 +39,15 @@ interface StreamEditorProps {
   onCancel: () => void;
   onDelete?: () => void;
   theme: Theme;
+  styles: ReturnType<typeof createStyles>;
 }
 
-function StreamEditor({ stream, onSave, onCancel, onDelete, theme }: StreamEditorProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+/**
+ * Performance optimization: Child components now accept a 'styles' object as a prop.
+ * This avoids redundant 'createStyles' calls and 'useMemo' hook overhead within
+ * each child instance, which is especially beneficial for components rendered in lists.
+ */
+function StreamEditor({ stream, onSave, onCancel, onDelete, theme, styles }: StreamEditorProps) {
   const { isLargeScreen } = useResponsive();
 
   const [name, setName] = useState(stream?.name || '');
@@ -302,10 +307,10 @@ interface StreamItemProps {
   onSetDefault: () => void;
   onToggleFavorite: () => void;
   theme: Theme;
+  styles: ReturnType<typeof createStyles>;
 }
 
-const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite, theme }: StreamItemProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite, theme, styles }: StreamItemProps) {
   return (
     <Pressable style={styles.streamItem} onPress={onPress}>
       <View style={styles.streamItemLeft}>
@@ -366,10 +371,10 @@ interface ImportModalProps {
   onImport: (json: string) => Promise<void>;
   onCancel: () => void;
   theme: Theme;
+  styles: ReturnType<typeof createStyles>;
 }
 
-function ImportModal({ visible, onImport, onCancel, theme }: ImportModalProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+function ImportModal({ visible, onImport, onCancel, theme, styles }: ImportModalProps) {
   const [jsonText, setJsonText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
@@ -444,10 +449,10 @@ interface ThemeSelectorProps {
   currentMode: 'system' | 'light' | 'dark';
   onSelectCallback: (mode: 'system' | 'light' | 'dark') => void;
   theme: Theme;
+  styles: ReturnType<typeof createStyles>;
 }
 
-function ThemeSelector({ currentMode, onSelectCallback, theme }: ThemeSelectorProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+function ThemeSelector({ currentMode, onSelectCallback, theme, styles }: ThemeSelectorProps) {
   const options: { label: string; value: 'system' | 'light' | 'dark'; icon: keyof typeof Ionicons.glyphMap }[] = [
     { label: 'System', value: 'system', icon: 'settings-outline' },
     { label: 'Light', value: 'light', icon: 'sunny-outline' },
@@ -519,10 +524,10 @@ interface TabBarProps {
   onTabChange: (tab: TabId) => void;
   theme: Theme;
   bottomInset: number;
+  styles: ReturnType<typeof createStyles>;
 }
 
-const TabBar = memo(function TabBar({ activeTab, onTabChange, theme, bottomInset }: TabBarProps) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
+const TabBar = memo(function TabBar({ activeTab, onTabChange, theme, bottomInset, styles }: TabBarProps) {
 
   return (
     <View style={[styles.tabBar, { paddingBottom: bottomInset }]}>
@@ -693,6 +698,7 @@ export default function SettingsScreen() {
           }}
           onDelete={editingStream ? handleDeleteStream : undefined}
           theme={theme}
+          styles={styles}
         />
       </View>
     );
@@ -707,6 +713,7 @@ export default function SettingsScreen() {
         onImport={handleImport}
         onCancel={() => setShowImportModal(false)}
         theme={theme}
+        styles={styles}
       />
 
       {/* Header */}
@@ -749,6 +756,7 @@ export default function SettingsScreen() {
                       onSetDefault={() => setDefaultStream(stream.id)}
                       onToggleFavorite={() => toggleFavorite(stream.id)}
                       theme={theme}
+                      styles={styles}
                     />
                   ))}
                 </View>
@@ -862,6 +870,7 @@ export default function SettingsScreen() {
               currentMode={settings.themeMode || 'system'}
               onSelectCallback={setThemeMode}
               theme={theme}
+              styles={styles}
             />
           </View>
         )}
@@ -934,7 +943,7 @@ export default function SettingsScreen() {
       )}
 
       {/* Tab Bar - Bottom Docked */}
-      <TabBar activeTab={activeTab} onTabChange={setActiveTab} theme={theme} bottomInset={insets.bottom} />
+      <TabBar activeTab={activeTab} onTabChange={setActiveTab} theme={theme} bottomInset={insets.bottom} styles={styles} />
     </View>
   );
 }
