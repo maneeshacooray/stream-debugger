@@ -897,22 +897,30 @@ const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, st
 
   // Filtered logs
   const filteredLogs = useMemo(() => {
-    let result = logs;
+    /**
+     * Performance optimization: Single-pass filtering to avoid redundant array
+     * allocations and iterations during high-frequency log updates.
+     */
+    const lowerFilter = filter.toLowerCase();
+    const hasCategoryFilter = categoryFilter !== 'all';
 
-    if (categoryFilter !== 'all') {
-      result = result.filter(log => log.category === categoryFilter);
-    }
+    return logs.filter(log => {
+      // Category filter
+      if (hasCategoryFilter && log.category !== categoryFilter) {
+        return false;
+      }
 
-    if (filter) {
-      const lowerFilter = filter.toLowerCase();
-      result = result.filter(log =>
-        log.message.toLowerCase().includes(lowerFilter) ||
-        log.category.includes(lowerFilter) ||
-        log.level.includes(lowerFilter)
-      );
-    }
+      // Text filter
+      if (filter) {
+        return (
+          log.message.toLowerCase().includes(lowerFilter) ||
+          log.category.includes(lowerFilter) ||
+          log.level.includes(lowerFilter)
+        );
+      }
 
-    return result;
+      return true;
+    });
   }, [logs, filter, categoryFilter]);
 
   /**
@@ -1256,21 +1264,34 @@ export default function StreamDebugger() {
 
       if (contentType.includes('mpegurl') || url.endsWith('.m3u8')) {
         const text = await res.text();
-        const lines = text.split('\n').filter(l => l.trim());
-        addLog('http', 'info', `Manifest received: ${lines.length} lines, ${text.length} bytes`);
+        /**
+         * Performance optimization: Single-pass manifest processing to avoid multiple
+         * intermediate array allocations from .split().filter() chains.
+         * This reduces memory pressure and GC cycles for large VOD playlists.
+         */
+        const lines = text.split('\n');
+        let validLineCount = 0;
+        let segmentCount = 0;
+        const tagsToLog: string[] = [];
 
-        // Parse and log manifest details
-        const extLines = lines.filter(l => l.startsWith('#EXT'));
-        extLines.forEach(line => {
-          if (line.includes('BANDWIDTH') || line.includes('RESOLUTION') || line.includes('CODECS')) {
-            addLog('http', 'debug', line);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          validLineCount++;
+
+          if (trimmed.startsWith('#EXT')) {
+            if (trimmed.includes('BANDWIDTH') || trimmed.includes('RESOLUTION') || trimmed.includes('CODECS')) {
+              tagsToLog.push(trimmed);
+            }
+          } else if (!trimmed.startsWith('#')) {
+            segmentCount++;
           }
-        });
+        }
 
-        // Log segment URLs
-        const segments = lines.filter(l => !l.startsWith('#') && l.trim());
-        if (segments.length > 0) {
-          addLog('http', 'debug', `Segments: ${segments.length} entries`);
+        addLog('http', 'info', `Manifest received: ${validLineCount} lines, ${text.length} bytes`);
+        tagsToLog.forEach(tag => addLog('http', 'debug', tag));
+        if (segmentCount > 0) {
+          addLog('http', 'debug', `Segments: ${segmentCount} entries`);
         }
       }
     } catch (err) {
