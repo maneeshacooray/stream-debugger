@@ -888,39 +888,36 @@ const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, st
   const [autoScroll, setAutoScroll] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
-  // Stats
-  const logStats = useMemo(() => {
+  // Optimized: Combine stats calculation and filtering into a single pass to reduce
+  // redundant array iterations and intermediate allocations in high-frequency update paths.
+  const { logStats, filteredLogs } = useMemo(() => {
     const stats = { total: logs.length, error: 0, warn: 0, info: 0, debug: 0 };
-    logs.forEach(log => stats[log.level]++);
-    return stats;
-  }, [logs]);
-
-  // Filtered logs
-  const filteredLogs = useMemo(() => {
-    /**
-     * Performance optimization: Single-pass filtering to avoid redundant array
-     * allocations and iterations during high-frequency log updates.
-     */
+    const filtered: LogEntry[] = [];
     const lowerFilter = filter.toLowerCase();
     const hasCategoryFilter = categoryFilter !== 'all';
 
-    return logs.filter(log => {
-      // Category filter
-      if (hasCategoryFilter && log.category !== categoryFilter) {
-        return false;
-      }
+    for (const log of logs) {
+      // Update totals (always based on the full log set)
+      stats[log.level]++;
 
-      // Text filter
-      if (filter) {
-        return (
+      // Apply filtering logic
+      let matches = true;
+      if (hasCategoryFilter && log.category !== categoryFilter) {
+        matches = false;
+      } else if (filter) {
+        matches = (
           log.message.toLowerCase().includes(lowerFilter) ||
           log.category.includes(lowerFilter) ||
           log.level.includes(lowerFilter)
         );
       }
 
-      return true;
-    });
+      if (matches) {
+        filtered.push(log);
+      }
+    }
+
+    return { logStats: stats, filteredLogs: filtered };
   }, [logs, filter, categoryFilter]);
 
   /**
