@@ -45,3 +45,9 @@
 **Learning:** Components in different tabs (e.g., 'Info' and 'Playlist') often need the same parsed data. Switching between them causes the component to unmount and remount, losing local state and triggering expensive re-fetching and re-parsing of manifests.
 
 **Action:** Implement a module-level cache (e.g., a `Map`) with a Time-To-Live (TTL) and maximum size limit. This allows fast data retrieval across component lifecycles while preventing memory leaks and ensuring data freshness.
+
+## 2026-07-08 - Combined single-pass processing for log stats and filtering
+
+**Learning:** Calculating statistics (total, levels) and filtering logs in separate passes over the same array leads to redundant iterations. In high-frequency update scenarios (every 500ms), this adds unnecessary CPU overhead and memory churn from intermediate array allocations.
+
+**Action:** Combine simultaneous array processing tasks (like stats calculation and filtering) into a single-pass for...of loop within a memoized block. This reduces the number of traversals and object allocations, improving performance in hot paths.
