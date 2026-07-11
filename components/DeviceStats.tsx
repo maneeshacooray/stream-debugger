@@ -21,8 +21,32 @@ interface DeviceInfo {
 
 interface PerformanceMetrics {
   jsHeapSize: number | null;
-  timestamp: number;
 }
+
+// ============================================================================
+// Helpers
+// ============================================================================
+const getInitialDeviceInfo = (): DeviceInfo => {
+  const { width, height } = Dimensions.get('window');
+  return {
+    platform: Platform.OS,
+    osVersion: Platform.Version,
+    appName: Constants.expoConfig?.name || 'Stream Debugger',
+    appVersion: Constants.expoConfig?.version || '1.0.0',
+    screenWidth: Math.round(width),
+    screenHeight: Math.round(height),
+    pixelRatio: PixelRatio.get(),
+    fontScale: PixelRatio.getFontScale(),
+  };
+};
+
+const formatMemory = (bytes: number | null): string => {
+  if (bytes === null) return '--';
+  const gb = bytes / (1024 * 1024 * 1024);
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(0)} MB`;
+};
 
 // ============================================================================
 // Component
@@ -33,36 +57,30 @@ interface DeviceStatsProps {
 
 export const DeviceStats = memo(function DeviceStats({ theme }: DeviceStatsProps) {
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
+
+  /**
+   * Performance optimization: Lazy state initialization avoids a redundant
+   * re-render on mount by calculating initial device info immediately
+   * instead of setting it in a useEffect.
+   */
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo>(getInitialDeviceInfo);
+
+  /**
+   * Performance optimization: Removed unused 'timestamp' from state to
+   * avoid unnecessary object allocations and updates.
+   */
   const [metrics, setMetrics] = useState<PerformanceMetrics>({
     jsHeapSize: null,
-    timestamp: Date.now(),
   });
 
-  // Get device info on mount
+  // Listen for dimension changes
   useEffect(() => {
-    const { width, height } = Dimensions.get('window');
-
-    const info: DeviceInfo = {
-      platform: Platform.OS,
-      osVersion: Platform.Version,
-      appName: Constants.expoConfig?.name || 'Stream Debugger',
-      appVersion: Constants.expoConfig?.version || '1.0.0',
-      screenWidth: Math.round(width),
-      screenHeight: Math.round(height),
-      pixelRatio: PixelRatio.get(),
-      fontScale: PixelRatio.getFontScale(),
-    };
-
-    setDeviceInfo(info);
-
-    // Listen for dimension changes
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setDeviceInfo(prev => prev ? {
+      setDeviceInfo(prev => ({
         ...prev,
         screenWidth: Math.round(window.width),
         screenHeight: Math.round(window.height),
-      } : prev);
+      }));
     });
 
     return () => subscription.remove();
@@ -70,38 +88,24 @@ export const DeviceStats = memo(function DeviceStats({ theme }: DeviceStatsProps
 
   // Update performance metrics periodically
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Try to get JS heap size (available in some environments)
-      let heapSize: number | null = null;
-      if (typeof performance !== 'undefined' && 'memory' in performance) {
-        const memory = (performance as { memory?: { usedJSHeapSize?: number } }).memory;
-        heapSize = memory?.usedJSHeapSize ?? null;
-      }
+    // Optimization: Skip interval entirely if performance.memory is unsupported
+    if (typeof performance === 'undefined' || !('memory' in performance)) {
+      return;
+    }
 
-      setMetrics({
-        jsHeapSize: heapSize,
-        timestamp: Date.now(),
+    const interval = setInterval(() => {
+      const memory = (performance as { memory?: { usedJSHeapSize?: number } }).memory;
+      const heapSize = memory?.usedJSHeapSize ?? null;
+
+      // Optimization: Bail out if metrics haven't changed to prevent re-render
+      setMetrics(prev => {
+        if (prev.jsHeapSize === heapSize) return prev;
+        return { jsHeapSize: heapSize };
       });
     }, 2000);
 
     return () => clearInterval(interval);
   }, []);
-
-  const formatMemory = (bytes: number | null): string => {
-    if (bytes === null) return '--';
-    const gb = bytes / (1024 * 1024 * 1024);
-    if (gb >= 1) return `${gb.toFixed(1)} GB`;
-    const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(0)} MB`;
-  };
-
-  if (!deviceInfo) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading device info...</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
