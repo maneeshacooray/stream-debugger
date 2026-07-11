@@ -51,3 +51,15 @@
 **Learning:** Calculating statistics (total, levels) and filtering logs in separate passes over the same array leads to redundant iterations. In high-frequency update scenarios (every 500ms), this adds unnecessary CPU overhead and memory churn from intermediate array allocations.
 
 **Action:** Combine simultaneous array processing tasks (like stats calculation and filtering) into a single-pass for...of loop within a memoized block. This reduces the number of traversals and object allocations, improving performance in hot paths.
+
+## 2026-07-10 - Redundant re-render on mount via useEffect
+
+**Learning:** Found that initializing state to null and updating it in useEffect on mount caused a redundant re-render cycle and UI flicker. This was particularly visible in DeviceStats where info is available synchronously via Platform and Dimensions APIs.
+
+**Action:** Use lazy state initialization useState(() => getInitialValue()) for any metadata available synchronously at mount. This ensures the first render is correct and complete, eliminating the second render pass and reducing JS thread load.
+
+## 2026-07-10 - Unused state properties in high-frequency paths
+
+**Learning:** Discovered that keeping unused properties (like 'timestamp' in PerformanceMetrics) in state objects updated by intervals causes unnecessary object allocations and triggers React reconciliation for no benefit.
+
+**Action:** Prune state objects to only include properties consumed by the UI. In high-frequency update paths, use a bail-out strategy in setMetrics(prev => ...) to return the existing reference if values haven't changed, preventing redundant re-renders.
