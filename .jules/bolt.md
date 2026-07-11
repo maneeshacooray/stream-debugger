@@ -63,3 +63,9 @@
 **Learning:** Discovered that keeping unused properties (like 'timestamp' in PerformanceMetrics) in state objects updated by intervals causes unnecessary object allocations and triggers React reconciliation for no benefit.
 
 **Action:** Prune state objects to only include properties consumed by the UI. In high-frequency update paths, use a bail-out strategy in setMetrics(prev => ...) to return the existing reference if values haven't changed, preventing redundant re-renders.
+
+## 2026-07-12 - Timer churn and sub-component isolation in high-frequency indicators
+
+**Learning:** Found that `NetworkQualityIndicator` was re-rendering every 500ms due to parent state updates, even when quality was stable. Additionally, the stall reset timer was being cleared and rescheduled on every render regardless of state, causing unnecessary JS timer churn.
+
+**Action:** Isolate visual status indicators into memoized sub-components to prevent redundant re-renders of complex UI (like signal bars) when input data is stable. Only manage reset timers (like stall resets) when there is actual state to reset (`count > 0`) to minimize background JS thread activity. Pre-calculate all theme/status variants in `StyleSheet` to eliminate object allocations in these hot paths.
