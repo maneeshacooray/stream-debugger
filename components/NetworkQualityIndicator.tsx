@@ -36,8 +36,6 @@ interface NetworkQualityIndicatorProps {
 const TARGET_BUFFER_SECONDS = 10; // Target buffer for VOD
 const TARGET_LIVE_BUFFER_SECONDS = 4; // Target buffer for live
 
-const QUALITY_COLORS = qualityColors;
-
 const QUALITY_LABELS: Record<NetworkQuality, string> = {
   excellent: 'Excellent',
   good: 'Good',
@@ -103,6 +101,42 @@ function formatSpeed(bps: number | null): string {
 }
 
 // ============================================================================
+// Quality Badge Component
+// ============================================================================
+interface QualityBadgeProps {
+  quality: NetworkQuality;
+}
+
+/**
+ * Performance optimization: Isolated QualityBadge component to prevent
+ * redundant re-renders of the signal bars and label when video stats
+ * (like currentTime) update every 500ms, but the quality status is stable.
+ */
+const QualityBadge = memo(function QualityBadge({ quality }: QualityBadgeProps) {
+  const isActive = (level: number) => {
+    switch (quality) {
+      case 'excellent': return level <= 3;
+      case 'good': return level <= 2;
+      case 'fair': return level <= 1;
+      case 'poor': return level <= 0;
+      default: return false;
+    }
+  };
+
+  return (
+    <View style={[styles.qualityBadge, styles[`badge_${quality}`]]}>
+      <View style={styles.signalBars}>
+        <View style={[styles.signalBar, styles.bar0, isActive(0) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
+        <View style={[styles.signalBar, styles.bar1, isActive(1) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
+        <View style={[styles.signalBar, styles.bar2, isActive(2) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
+        <View style={[styles.signalBar, styles.bar3, isActive(3) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
+      </View>
+      <Text style={[styles.qualityText, styles[`text_${quality}`]]}>{QUALITY_LABELS[quality]}</Text>
+    </View>
+  );
+});
+
+// ============================================================================
 // Component
 // ============================================================================
 export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
@@ -161,20 +195,26 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
 
     lastTimeRef.current = currentTime;
 
-    // Reset stall count after 30 seconds of good playback
-    if (stallResetTimerRef.current) {
-      clearTimeout(stallResetTimerRef.current);
+    /**
+     * Performance optimization: Only manage the 30-second stall reset timer
+     * when there is an actual stallCount to reset. This significantly
+     * reduces JS timer churn during normal, healthy playback.
+     */
+    if (stallCount > 0) {
+      if (stallResetTimerRef.current) {
+        clearTimeout(stallResetTimerRef.current);
+      }
+      stallResetTimerRef.current = setTimeout(() => {
+        setStallCount(0);
+      }, 30000);
     }
-    stallResetTimerRef.current = setTimeout(() => {
-      setStallCount(0);
-    }, 30000);
 
     return () => {
       if (stallResetTimerRef.current) {
         clearTimeout(stallResetTimerRef.current);
       }
     };
-  }, [currentTime, isPlaying]);
+  }, [currentTime, isPlaying, stallCount]);
 
   // Report stats to parent - only if callback is provided
   useEffect(() => {
@@ -193,34 +233,10 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
     onStatsUpdate(stats);
   }, [quality, bitrate, latency, bufferHealth, stallCount, lastStallDuration, onStatsUpdate]);
 
-  const color = QUALITY_COLORS[quality];
-
   return (
     <View style={styles.container}>
-      {/* Quality Badge */}
-      <View style={[styles.qualityBadge, { backgroundColor: color + '20', borderColor: color }]}>
-        <View style={styles.signalBars}>
-          {[0, 1, 2, 3].map(i => (
-            <View
-              key={i}
-              style={[
-                styles.signalBar,
-                {
-                  height: 4 + i * 3,
-                  backgroundColor:
-                    (quality === 'excellent' && i <= 3) ||
-                    (quality === 'good' && i <= 2) ||
-                    (quality === 'fair' && i <= 1) ||
-                    (quality === 'poor' && i <= 0)
-                      ? color
-                      : color + '30',
-                },
-              ]}
-            />
-          ))}
-        </View>
-        <Text style={[styles.qualityText, { color }]}>{QUALITY_LABELS[quality]}</Text>
-      </View>
+      {/* Quality Badge - Optimized to prevent re-renders */}
+      <QualityBadge quality={quality} />
 
       {/* Stats Row */}
       <View style={styles.statsRow}>
@@ -233,7 +249,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Buffer */}
         <View style={styles.statItem}>
           <View style={styles.bufferBarContainer}>
-            <View style={[styles.bufferBar, { width: `${bufferHealth * 100}%`, backgroundColor: color }]} />
+            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], { width: `${bufferHealth * 100}%` }]} />
           </View>
           <Text style={styles.statValue}>{bufferAhead.toFixed(1)}s</Text>
         </View>
@@ -249,8 +265,8 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Stalls indicator */}
         {stallCount > 0 && (
           <View style={styles.statItem}>
-            <Ionicons name="warning-outline" size={12} color={QUALITY_COLORS.poor} />
-            <Text style={[styles.statValue, { color: QUALITY_COLORS.poor }]}>{stallCount}</Text>
+            <Ionicons name="warning-outline" size={12} color={qualityColors.poor} />
+            <Text style={[styles.statValue, { color: qualityColors.poor }]}>{stallCount}</Text>
           </View>
         )}
       </View>
@@ -286,6 +302,10 @@ const styles = StyleSheet.create({
     width: 3,
     borderRadius: 1,
   },
+  bar0: { height: 4 },
+  bar1: { height: 7 },
+  bar2: { height: 10 },
+  bar3: { height: 13 },
   qualityText: {
     fontSize: 11,
     fontWeight: '600',
@@ -316,6 +336,37 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
   },
+  // Performance optimization: Pre-calculate all quality-variant styles
+  // to avoid dynamic string and object allocations in high-frequency render paths.
+  badge_excellent: { backgroundColor: qualityColors.excellent + '20', borderColor: qualityColors.excellent },
+  badge_good: { backgroundColor: qualityColors.good + '20', borderColor: qualityColors.good },
+  badge_fair: { backgroundColor: qualityColors.fair + '20', borderColor: qualityColors.fair },
+  badge_poor: { backgroundColor: qualityColors.poor + '20', borderColor: qualityColors.poor },
+  badge_offline: { backgroundColor: qualityColors.offline + '20', borderColor: qualityColors.offline },
+
+  text_excellent: { color: qualityColors.excellent },
+  text_good: { color: qualityColors.good },
+  text_fair: { color: qualityColors.fair },
+  text_poor: { color: qualityColors.poor },
+  text_offline: { color: qualityColors.offline },
+
+  barActive_excellent: { backgroundColor: qualityColors.excellent },
+  barActive_good: { backgroundColor: qualityColors.good },
+  barActive_fair: { backgroundColor: qualityColors.fair },
+  barActive_poor: { backgroundColor: qualityColors.poor },
+  barActive_offline: { backgroundColor: qualityColors.offline },
+
+  barInactive_excellent: { backgroundColor: qualityColors.excellent + '30' },
+  barInactive_good: { backgroundColor: qualityColors.good + '30' },
+  barInactive_fair: { backgroundColor: qualityColors.fair + '30' },
+  barInactive_poor: { backgroundColor: qualityColors.poor + '30' },
+  barInactive_offline: { backgroundColor: qualityColors.offline + '30' },
+
+  buffer_bar_excellent: { backgroundColor: qualityColors.excellent },
+  buffer_bar_good: { backgroundColor: qualityColors.good },
+  buffer_bar_fair: { backgroundColor: qualityColors.fair },
+  buffer_bar_poor: { backgroundColor: qualityColors.poor },
+  buffer_bar_offline: { backgroundColor: qualityColors.offline },
 });
 
 export default NetworkQualityIndicator;
