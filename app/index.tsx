@@ -484,16 +484,15 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
 // Multi-View Player Component (lazy loaded)
 // ============================================================================
 interface MultiViewPlayerProps {
-  streamUrl: string;
-  label: string;
+  stream: StreamConfig;
   onLog?: (message: string, level: 'info' | 'error') => void;
-  onPress?: () => void;
+  onPress?: (stream: StreamConfig) => void;
   theme: Theme;
   styles: any;
 }
 
-const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog, onPress, theme, styles }: MultiViewPlayerProps) {
-  const player = useVideoPlayer(streamUrl || null);
+const MultiViewPlayer = memo(function MultiViewPlayer({ stream, onLog, onPress, theme, styles }: MultiViewPlayerProps) {
+  const player = useVideoPlayer(stream.url || null);
   const mountedRef = useRef(true);
   const loadStartRef = useRef(Date.now());
   const [loadTimeMs, setLoadTimeMs] = useState<number | null>(null);
@@ -513,9 +512,9 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog,
       if (status === 'readyToPlay') {
         const elapsed = Date.now() - loadStartRef.current;
         setLoadTimeMs(elapsed);
-        onLog?.(`${label}: Ready in ${(elapsed / 1000).toFixed(1)}s`, 'info');
+        onLog?.(`${stream.name}: Ready in ${(elapsed / 1000).toFixed(1)}s`, 'info');
       } else if (status === 'error' && error) {
-        onLog?.(`${label}: ${error}`, 'error');
+        onLog?.(`${stream.name}: ${error}`, 'error');
       }
     });
 
@@ -537,12 +536,16 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog,
         player.pause();
       } catch { }
     };
-  }, [player, label, onLog]);
+  }, [player, stream.name, onLog]);
+
+  const handlePress = useCallback(() => {
+    onPress?.(stream);
+  }, [onPress, stream]);
 
   return (
-    <Pressable style={styles.multiViewCard} onPress={onPress}>
+    <Pressable style={styles.multiViewCard} onPress={handlePress}>
       <View style={[styles.multiViewVideoWrapper, { pointerEvents: 'none' }]}>
-        {player && streamUrl && (
+        {player && stream.url && (
           <VideoView
             style={styles.video}
             player={player}
@@ -554,7 +557,7 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ streamUrl, label, onLog,
       <View style={styles.multiViewLabel}>
         <View style={styles.liveDot} />
         <Text style={styles.multiViewLabelText} numberOfLines={1}>
-          {label}
+          {stream.name}
         </Text>
         {loadTimeMs !== null ? (
           <Text style={styles.multiViewLoadTime}>{(loadTimeMs / 1000).toFixed(1)}s</Text>
@@ -1147,25 +1150,33 @@ export default function StreamDebugger() {
   const [activeMainTab, setActiveMainTab] = useState<MainTabId>('info');
 
   /**
+   * Performance optimization: Memoize the multi-view grid columns calculation.
+   * By isolating the column count from width, we prevent redundant row
+   * array allocations on every pixel of window resize.
+   */
+  const multiViewCols = useMemo(() => {
+    if (!multiViewMode) return 0;
+    if (width >= 1024) return 4;
+    if (width >= 768 || (isLandscape && width >= 600)) return 3;
+    return 2;
+  }, [width, isLandscape, multiViewMode]);
+
+  /**
    * Performance optimization: Memoize the multi-view grid calculation.
    * By adding multiViewMode as a dependency and an early return, we avoid
    * redundant processing and array allocations when multi-view is disabled.
    */
   const multiViewGrid = useMemo(() => {
-    if (!multiViewMode) return { rows: [], columns: 0 };
+    if (!multiViewMode || multiViewCols === 0) return { rows: [], columns: 0 };
 
     const multiViewStreams = getMultiViewStreams();
     const gridRows: StreamConfig[][] = [];
-    // Calculate how many columns to show based on width
-    let cols = 2;
-    if (width >= 1024) cols = 4;
-    else if (width >= 768 || (isLandscape && width >= 600)) cols = 3;
 
-    for (let i = 0; i < multiViewStreams.length; i += cols) {
-      gridRows.push(multiViewStreams.slice(i, i + cols));
+    for (let i = 0; i < multiViewStreams.length; i += multiViewCols) {
+      gridRows.push(multiViewStreams.slice(i, i + multiViewCols));
     }
-    return { rows: gridRows, columns: cols };
-  }, [getMultiViewStreams, width, isLandscape, multiViewMode]);
+    return { rows: gridRows, columns: multiViewCols };
+  }, [getMultiViewStreams, multiViewCols, multiViewMode]);
 
   // Get favorite streams for quick access bar - filter directly from streams state
   const favoriteStreams = useMemo(() => {
@@ -1576,13 +1587,12 @@ export default function StreamDebugger() {
               <View key={multiViewReloadKey} style={{ gap: 8 }}>
                 {multiViewGrid.rows.map((row, rowIndex) => (
                   <View key={`row-${rowIndex}`} style={styles.multiViewRow}>
-                    {row.map((stream) => (
+                    {row.map((streamItem) => (
                       <MultiViewPlayer
-                        key={`stream-${stream.id}`}
-                        streamUrl={stream.url}
-                        label={stream.name}
+                        key={`stream-${streamItem.id}`}
+                        stream={streamItem}
                         onLog={handleMultiViewLog}
-                        onPress={() => handleMultiViewPress(stream)}
+                        onPress={handleMultiViewPress}
                         theme={theme}
                         styles={styles}
                       />

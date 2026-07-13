@@ -69,3 +69,9 @@
 **Learning:** Found that `NetworkQualityIndicator` was re-rendering every 500ms due to parent state updates, even when quality was stable. Additionally, the stall reset timer was being cleared and rescheduled on every render regardless of state, causing unnecessary JS timer churn.
 
 **Action:** Isolate visual status indicators into memoized sub-components to prevent redundant re-renders of complex UI (like signal bars) when input data is stable. Only manage reset timers (like stall resets) when there is actual state to reset (`count > 0`) to minimize background JS thread activity. Pre-calculate all theme/status variants in `StyleSheet` to eliminate object allocations in these hot paths.
+
+## 2026-07-14 - Redundant grid allocations during window resizing
+
+**Learning:** Found that memoizing the multi-view grid calculation based directly on window `width` and `isLandscape` caused redundant row array allocations on every pixel of window resize, even when the column count remained the same. Additionally, passing inline arrow functions to memoized child components in a loop breaks `React.memo` effectiveness.
+
+**Action:** Extract breakpoint-derived values (like `multiViewCols`) into their own `useMemo` and use those as dependencies for downstream layout calculations. Refactor child components to accept the underlying data object and use a stable callback reference to ensure `React.memo` prevents unnecessary re-renders in large grids.
