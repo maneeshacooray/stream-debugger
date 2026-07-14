@@ -47,7 +47,11 @@ interface StreamEditorProps {
  * This avoids redundant 'createStyles' calls and 'useMemo' hook overhead within
  * each child instance, which is especially beneficial for components rendered in lists.
  */
-function StreamEditor({ stream, onSave, onCancel, onDelete, theme, styles }: StreamEditorProps) {
+/**
+ * Performance optimization: StreamEditor is wrapped in React.memo to prevent
+ * unnecessary re-renders when the parent SettingsScreen updates, unless its props change.
+ */
+const StreamEditor = memo(function StreamEditor({ stream, onSave, onCancel, onDelete, theme, styles }: StreamEditorProps) {
   const { isLargeScreen } = useResponsive();
 
   const [name, setName] = useState(stream?.name || '');
@@ -295,7 +299,7 @@ function StreamEditor({ stream, onSave, onCancel, onDelete, theme, styles }: Str
       </View>
     </ScrollView>
   );
-}
+});
 
 // ============================================================================
 // Stream List Item Component
@@ -303,16 +307,93 @@ function StreamEditor({ stream, onSave, onCancel, onDelete, theme, styles }: Str
 interface StreamItemProps {
   stream: StreamConfig;
   isDefault: boolean;
-  onPress: () => void;
-  onSetDefault: () => void;
-  onToggleFavorite: () => void;
+  /**
+   * Performance optimization: Callbacks now accept the underlying data object (stream)
+   * to allow parent components to pass stable references, preventing React.memo
+   * from breaking when components are rendered in a loop.
+   */
+  onPress: (stream: StreamConfig) => void;
+  onSetDefault: (id: string) => void;
+  onToggleFavorite: (id: string) => void;
   theme: Theme;
   styles: ReturnType<typeof createStyles>;
 }
 
-const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite, theme, styles }: StreamItemProps) {
+/**
+ * Performance optimization: MultiViewSelectionItem is extracted into its own
+ * memoized component to allow parent SettingsScreen to pass stable callback
+ * references, preventing redundant re-renders of the selection list.
+ */
+interface MultiViewSelectionItemProps {
+  stream: StreamConfig;
+  isSelected: boolean;
+  selectionIndex: number;
+  onToggle: (id: string) => void;
+  theme: Theme;
+  styles: ReturnType<typeof createStyles>;
+}
+
+const MultiViewSelectionItem = memo(function MultiViewSelectionItem({
+  stream,
+  isSelected,
+  selectionIndex,
+  onToggle,
+  theme,
+  styles
+}: MultiViewSelectionItemProps) {
+  const handlePress = useCallback(() => {
+    onToggle(stream.id);
+  }, [onToggle, stream.id]);
+
   return (
-    <Pressable style={styles.streamItem} onPress={onPress}>
+    <Pressable
+      style={[styles.multiViewItem, isSelected && styles.multiViewItemSelected]}
+      onPress={handlePress}
+    >
+      <View style={styles.multiViewItemLeft}>
+        {isSelected ? (
+          <View style={styles.multiViewIndex}>
+            <Text style={styles.multiViewIndexText}>{selectionIndex + 1}</Text>
+          </View>
+        ) : (
+          <View style={styles.multiViewCheckbox}>
+            <Ionicons name="add" size={14} color={theme.text.muted} />
+          </View>
+        )}
+        <Text
+          style={[
+            styles.multiViewItemName,
+            isSelected && styles.multiViewItemNameSelected,
+          ]}
+          numberOfLines={1}
+        >
+          {stream.name}
+        </Text>
+        {stream.isLive && (
+          <View style={styles.multiViewLiveBadge}>
+            <Text style={styles.multiViewLiveText}>LIVE</Text>
+          </View>
+        )}
+      </View>
+    </Pressable>
+  );
+});
+
+const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetDefault, onToggleFavorite, theme, styles }: StreamItemProps) {
+  const handlePress = useCallback(() => {
+    onPress(stream);
+  }, [onPress, stream]);
+
+  const handleSetDefault = useCallback(() => {
+    onSetDefault(stream.id);
+  }, [onSetDefault, stream.id]);
+
+  const handleToggleFavorite = useCallback(() => {
+    onToggleFavorite(stream.id);
+  }, [onToggleFavorite, stream.id]);
+
+  return (
+    <Pressable style={styles.streamItem} onPress={handlePress}>
       <View style={styles.streamItemLeft}>
         <View style={styles.streamItemHeader}>
           <Text style={styles.streamItemName} numberOfLines={1}>
@@ -337,7 +418,7 @@ const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetD
       <View style={styles.streamItemActions}>
         <Pressable
           style={styles.streamItemAction}
-          onPress={onToggleFavorite}
+          onPress={handleToggleFavorite}
           hitSlop={8}
         >
           <Ionicons
@@ -348,7 +429,7 @@ const StreamItem = memo(function StreamItem({ stream, isDefault, onPress, onSetD
         </Pressable>
         <Pressable
           style={styles.streamItemAction}
-          onPress={onSetDefault}
+          onPress={handleSetDefault}
           hitSlop={8}
         >
           <Ionicons
@@ -374,7 +455,11 @@ interface ImportModalProps {
   styles: ReturnType<typeof createStyles>;
 }
 
-function ImportModal({ visible, onImport, onCancel, theme, styles }: ImportModalProps) {
+/**
+ * Performance optimization: ImportModal is wrapped in React.memo to prevent
+ * unnecessary re-renders during state updates in the parent SettingsScreen.
+ */
+const ImportModal = memo(function ImportModal({ visible, onImport, onCancel, theme, styles }: ImportModalProps) {
   const [jsonText, setJsonText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
@@ -440,7 +525,7 @@ function ImportModal({ visible, onImport, onCancel, theme, styles }: ImportModal
       </View>
     </View>
   );
-}
+});
 
 // ============================================================================
 // Theme Selector Component
@@ -452,13 +537,21 @@ interface ThemeSelectorProps {
   styles: ReturnType<typeof createStyles>;
 }
 
-function ThemeSelector({ currentMode, onSelectCallback, theme, styles }: ThemeSelectorProps) {
-  const options: { label: string; value: 'system' | 'light' | 'dark'; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { label: 'System', value: 'system', icon: 'settings-outline' },
-    { label: 'Light', value: 'light', icon: 'sunny-outline' },
-    { label: 'Dark', value: 'dark', icon: 'moon-outline' },
-  ];
+/**
+ * Performance optimization: THEME_OPTIONS is moved outside the component to
+ * prevent redundant array allocations on every render cycle.
+ */
+const THEME_OPTIONS: { label: string; value: 'system' | 'light' | 'dark'; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { label: 'System', value: 'system', icon: 'settings-outline' },
+  { label: 'Light', value: 'light', icon: 'sunny-outline' },
+  { label: 'Dark', value: 'dark', icon: 'moon-outline' },
+];
 
+/**
+ * Performance optimization: ThemeSelector is wrapped in React.memo to ensure
+ * it only re-renders when the theme mode or current theme object actually changes.
+ */
+const ThemeSelector = memo(function ThemeSelector({ currentMode, onSelectCallback, theme, styles }: ThemeSelectorProps) {
   return (
     <View style={styles.themeSelectorContainer}>
       <View style={styles.sectionHeader}>
@@ -466,7 +559,7 @@ function ThemeSelector({ currentMode, onSelectCallback, theme, styles }: ThemeSe
         <Text style={styles.sectionTitle}>Appearance</Text>
       </View>
       <View style={styles.themeOptionsRow}>
-        {options.map((option) => {
+        {THEME_OPTIONS.map((option) => {
           const isSelected = currentMode === option.value;
           return (
             <Pressable
@@ -496,7 +589,7 @@ function ThemeSelector({ currentMode, onSelectCallback, theme, styles }: ThemeSe
       </View>
     </View>
   );
-}
+});
 
 // ============================================================================
 // Tab Types and Configuration
@@ -586,6 +679,19 @@ export default function SettingsScreen() {
   const [editingStream, setEditingStream] = useState<StreamConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // Handlers for StreamItem components
+  const handleEditStream = useCallback((stream: StreamConfig) => {
+    setEditingStream(stream);
+  }, []);
+
+  const handleSetDefault = useCallback((id: string) => {
+    setDefaultStream(id);
+  }, [setDefaultStream]);
+
+  const handleToggleFavorite = useCallback((id: string) => {
+    toggleFavorite(id);
+  }, [toggleFavorite]);
 
   // Toggle stream in multi-view selection
   const toggleMultiViewStream = useCallback((streamId: string) => {
@@ -752,9 +858,9 @@ export default function SettingsScreen() {
                       key={stream.id}
                       stream={stream}
                       isDefault={settings.defaultStreamId === stream.id}
-                      onPress={() => setEditingStream(stream)}
-                      onSetDefault={() => setDefaultStream(stream.id)}
-                      onToggleFavorite={() => toggleFavorite(stream.id)}
+                      onPress={handleEditStream}
+                      onSetDefault={handleSetDefault}
+                      onToggleFavorite={handleToggleFavorite}
                       theme={theme}
                       styles={styles}
                     />
@@ -816,37 +922,15 @@ export default function SettingsScreen() {
                 const selectionIndex = settings.multiViewStreamIds?.indexOf(stream.id) ?? -1;
 
                 return (
-                  <Pressable
+                  <MultiViewSelectionItem
                     key={stream.id}
-                    style={styles.multiViewItem}
-                    onPress={() => toggleMultiViewStream(stream.id)}
-                  >
-                    <View style={styles.multiViewItemLeft}>
-                      {isSelected ? (
-                        <View style={styles.multiViewIndex}>
-                          <Text style={styles.multiViewIndexText}>{selectionIndex + 1}</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.multiViewCheckbox}>
-                          <Ionicons name="add" size={14} color={theme.text.muted} />
-                        </View>
-                      )}
-                      <Text
-                        style={[
-                          styles.multiViewItemName,
-                          isSelected && styles.multiViewItemNameSelected,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {stream.name}
-                      </Text>
-                      {stream.isLive && (
-                        <View style={styles.multiViewLiveBadge}>
-                          <Text style={styles.multiViewLiveText}>LIVE</Text>
-                        </View>
-                      )}
-                    </View>
-                  </Pressable>
+                    stream={stream}
+                    isSelected={isSelected}
+                    selectionIndex={selectionIndex}
+                    onToggle={toggleMultiViewStream}
+                    theme={theme}
+                    styles={styles}
+                  />
                 );
               })}
             </View>
