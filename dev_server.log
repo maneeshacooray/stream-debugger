@@ -1,0 +1,16 @@
+
+> steam-app@1.2.1 web
+> expo start --web
+
+Starting project at /app
+React Compiler enabled
+Starting Metro Bundler
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Web node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ node_modules/expo-router/node/render.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 2622ms node_modules/expo-router/node/render.js (1254 modules)
+Web Bundled 3500ms node_modules/expo-router/entry.js (1304 modules)
+Web node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (1304/1304)
+Web Bundled 983ms node_modules/expo-router/entry.js (1250 modules)
+ LOG  [web] Logs will appear in the browser console

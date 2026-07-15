@@ -153,7 +153,6 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
   const [lastStallDuration, setLastStallDuration] = useState<number | null>(null);
   const lastTimeRef = useRef(currentTime);
   const stallStartRef = useRef<number | null>(null);
-  const stallResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Calculate buffer health
   const bufferAhead = bufferedPosition - currentTime;
@@ -194,27 +193,23 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
     }
 
     lastTimeRef.current = currentTime;
+  }, [currentTime, isPlaying]);
 
-    /**
-     * Performance optimization: Only manage the 30-second stall reset timer
-     * when there is an actual stallCount to reset. This significantly
-     * reduces JS timer churn during normal, healthy playback.
-     */
+  /**
+   * Performance optimization: Isolated stall reset timer logic.
+   * By moving this to a separate effect that only depends on stallCount,
+   * we prevent the timer from being cleared and rescheduled every 500ms
+   * during normal playback. This reduces JS timer churn and ensures the
+   * stall count correctly recovers after 30 seconds of healthy playback.
+   */
+  useEffect(() => {
     if (stallCount > 0) {
-      if (stallResetTimerRef.current) {
-        clearTimeout(stallResetTimerRef.current);
-      }
-      stallResetTimerRef.current = setTimeout(() => {
+      const timer = setTimeout(() => {
         setStallCount(0);
       }, 30000);
+      return () => clearTimeout(timer);
     }
-
-    return () => {
-      if (stallResetTimerRef.current) {
-        clearTimeout(stallResetTimerRef.current);
-      }
-    };
-  }, [currentTime, isPlaying, stallCount]);
+  }, [stallCount]);
 
   // Report stats to parent - only if callback is provided
   useEffect(() => {
