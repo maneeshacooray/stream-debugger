@@ -75,3 +75,9 @@
 **Learning:** Found that memoizing the multi-view grid calculation based directly on window `width` and `isLandscape` caused redundant row array allocations on every pixel of window resize, even when the column count remained the same. Additionally, passing inline arrow functions to memoized child components in a loop breaks `React.memo` effectiveness.
 
 **Action:** Extract breakpoint-derived values (like `multiViewCols`) into their own `useMemo` and use those as dependencies for downstream layout calculations. Refactor child components to accept the underlying data object and use a stable callback reference to ensure `React.memo` prevents unnecessary re-renders in large grids.
+
+## 2026-07-16 - Isolated timer management in high-frequency effects
+
+**Learning:** Managing a reset timer (like 30s stall recovery) inside an effect that depends on high-frequency props (like `currentTime` updated every 500ms) causes the timer to be cleared and rescheduled on every update. This creates significant JS timer churn and, in this case, prevented the `stallCount` from ever resetting during active playback.
+
+**Action:** Isolate timer-based logic into its own `useEffect` that depends strictly on the state being timed (e.g., `stallCount`). This ensures the timer persists across renders of the high-frequency path and only reacts to actual state changes.
