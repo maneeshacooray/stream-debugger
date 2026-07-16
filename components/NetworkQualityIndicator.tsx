@@ -211,6 +211,9 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
     }
   }, [stallCount]);
 
+  // Memoize formatted bitrate to avoid redundant string formatting every 500ms
+  const formattedBitrate = useMemo(() => formatSpeed(bitrate), [bitrate]);
+
   // Report stats to parent - only if callback is provided
   useEffect(() => {
     if (!onStatsUpdate) return;
@@ -238,7 +241,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Bitrate */}
         <View style={styles.statItem}>
           <Ionicons name="speedometer-outline" size={12} color="#94a3b8" />
-          <Text style={styles.statValue}>{formatSpeed(bitrate)}</Text>
+          <Text style={styles.statValue}>{formattedBitrate}</Text>
         </View>
 
         {/* Buffer */}
