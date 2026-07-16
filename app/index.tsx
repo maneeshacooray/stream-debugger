@@ -570,6 +570,169 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ stream, onLog, onPress, 
 });
 
 // ============================================================================
+// Info Tab Stats Components
+// ============================================================================
+
+interface VideoMetadataStatsProps {
+  videoTrack: {
+    width: number;
+    height: number;
+    bitrate: number | null;
+    frameRate: number | null;
+    mimeType: string | null;
+  };
+  codecInfo: { name: string; fullName: string; color: string };
+  theme: Theme;
+  styles: any;
+}
+
+/**
+ * Performance optimization: Isolates video metadata (resolution, codec, bitrate) into
+ * a memoized component. Since these values rarely change during playback, this
+ * component will bail out of React reconciliation during the high-frequency
+ * 500ms currentTime updates, reducing JS thread overhead.
+ */
+const VideoMetadataStats = memo(function VideoMetadataStats({ videoTrack, codecInfo, theme, styles }: VideoMetadataStatsProps) {
+  // Memoize quality label and aspect ratio calculation within the sub-component
+  // to ensure they only update when videoTrack dimensions change.
+  const qualityLabel = useMemo(() => {
+    if (videoTrack.height >= 2160) return '4K UHD';
+    if (videoTrack.height >= 1440) return '1440p QHD';
+    if (videoTrack.height >= 1080) return '1080p FHD';
+    if (videoTrack.height >= 720) return '720p HD';
+    if (videoTrack.height >= 480) return '480p SD';
+    return `${videoTrack.height}p`;
+  }, [videoTrack.height]);
+
+  const aspectRatio = useMemo(() =>
+    (videoTrack.width / videoTrack.height).toFixed(2),
+    [videoTrack.width, videoTrack.height]
+  );
+
+  return (
+    <>
+      {/* Codec & Resolution Row */}
+      <View style={styles.videoStatsRow}>
+        <View style={[styles.videoStatBox, styles.codecBox]}>
+          <Text style={styles.videoStatLabel}>Codec</Text>
+          <View style={styles.codecBadgeRow}>
+            <View style={[styles.codecBadge, { backgroundColor: codecInfo.color + '25', borderColor: codecInfo.color }]}>
+              <Text style={[styles.codecBadgeText, { color: codecInfo.color }]}>
+                {codecInfo.name}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.videoStatBox}>
+          <Text style={styles.videoStatLabel}>Resolution</Text>
+          <Text style={styles.videoStatValue}>
+            {videoTrack.width}x{videoTrack.height}
+          </Text>
+        </View>
+        <View style={styles.videoStatBox}>
+          <Text style={styles.videoStatLabel}>FPS</Text>
+          <Text style={styles.videoStatValue}>
+            {videoTrack.frameRate?.toFixed(1) ?? '--'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Bitrate & Quality Row */}
+      <View style={styles.videoStatsRow}>
+        <View style={styles.videoStatBox}>
+          <Text style={styles.videoStatLabel}>Bitrate</Text>
+          <Text style={styles.videoStatValue}>
+            {videoTrack.bitrate
+              ? `${(videoTrack.bitrate / 1000000).toFixed(2)} Mbps`
+              : '--'}
+          </Text>
+        </View>
+        <View style={styles.videoStatBox}>
+          <Text style={styles.videoStatLabel}>Quality</Text>
+          <Text style={styles.videoStatValue}>{qualityLabel}</Text>
+        </View>
+        <View style={styles.videoStatBox}>
+          <Text style={styles.videoStatLabel}>Aspect</Text>
+          <Text style={styles.videoStatValue}>{aspectRatio}</Text>
+        </View>
+      </View>
+
+      {/* Full Codec Info Row */}
+      {videoTrack.mimeType && (
+        <View style={styles.videoStatsRow}>
+          <View style={[styles.videoStatBox, { flex: 1 }]}>
+            <Text style={styles.videoStatLabel}>Full Codec</Text>
+            <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
+              {codecInfo.fullName} - {videoTrack.mimeType}
+            </Text>
+          </View>
+        </View>
+      )}
+    </>
+  );
+});
+
+interface PlaybackStatsProps {
+  playbackRate: number;
+  volume: number;
+  muted: boolean;
+  theme: Theme;
+  styles: any;
+}
+
+/**
+ * Performance optimization: Isolates playback controls status (speed, volume) into
+ * a memoized component. This prevents these static or semi-static values from being
+ * re-reconciled every 500ms during playback time updates.
+ */
+const PlaybackStats = memo(function PlaybackStats({ playbackRate, volume, muted, theme, styles }: PlaybackStatsProps) {
+  return (
+    <View style={styles.videoStatsRow}>
+      <View style={styles.videoStatBox}>
+        <Text style={styles.videoStatLabel}>Speed</Text>
+        <Text style={styles.videoStatValue}>{playbackRate}x</Text>
+      </View>
+      <View style={styles.videoStatBox}>
+        <Text style={styles.videoStatLabel}>Volume</Text>
+        <Text style={styles.videoStatValue}>{Math.round(volume * 100)}%</Text>
+      </View>
+      <View style={styles.videoStatBox}>
+        <Text style={styles.videoStatLabel}>Muted</Text>
+        <Ionicons
+          name={muted ? 'volume-mute' : 'volume-high'}
+          size={16}
+          color={muted ? theme.accent.error : theme.accent.success}
+        />
+      </View>
+    </View>
+  );
+});
+
+interface AudioTrackStatsProps {
+  audioTrack: {
+    label: string;
+    language: string;
+  };
+  styles: any;
+}
+
+/**
+ * Performance optimization: Isolates audio track metadata into a memoized component.
+ */
+const AudioTrackStats = memo(function AudioTrackStats({ audioTrack, styles }: AudioTrackStatsProps) {
+  return (
+    <View style={styles.videoStatsRow}>
+      <View style={[styles.videoStatBox, { flex: 1 }]}>
+        <Text style={styles.videoStatLabel}>Audio</Text>
+        <Text style={styles.videoStatValue}>
+          {audioTrack.label} ({audioTrack.language})
+        </Text>
+      </View>
+    </View>
+  );
+});
+
+// ============================================================================
 // Info Tab Content Component
 // ============================================================================
 interface InfoTabContentProps {
@@ -686,6 +849,12 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
     [videoStats.videoTrack?.mimeType, theme]
   );
 
+  // Memoize formatted duration to avoid redundant string formatting
+  const formattedDuration = useMemo(() =>
+    videoStats.duration > 0 ? formatTime(videoStats.duration) : '--:--',
+    [videoStats.duration]
+  );
+
   return (
     <>
       {/* Network Quality Indicator */}
@@ -729,7 +898,7 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
               </View>
               <View style={styles.videoStatBox}>
                 <Text style={styles.videoStatLabel}>Duration</Text>
-                <Text style={styles.videoStatValue}>{videoStats.duration > 0 ? formatTime(videoStats.duration) : '--:--'}</Text>
+                <Text style={styles.videoStatValue}>{formattedDuration}</Text>
               </View>
               <View style={styles.videoStatBox}>
                 <Text style={styles.videoStatLabel}>Buffered</Text>
@@ -755,107 +924,29 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
               </View>
             )}
 
-            {/* Codec & Resolution Row */}
+            {/* Memoized Metadata & Playback Stats */}
             {videoStats.videoTrack && (
-              <View style={styles.videoStatsRow}>
-                <View style={[styles.videoStatBox, styles.codecBox]}>
-                  <Text style={styles.videoStatLabel}>Codec</Text>
-                  <View style={styles.codecBadgeRow}>
-                    <View style={[styles.codecBadge, { backgroundColor: codecInfo.color + '25', borderColor: codecInfo.color }]}>
-                      <Text style={[styles.codecBadgeText, { color: codecInfo.color }]}>
-                        {codecInfo.name}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.videoStatBox}>
-                  <Text style={styles.videoStatLabel}>Resolution</Text>
-                  <Text style={styles.videoStatValue}>
-                    {videoStats.videoTrack.width}x{videoStats.videoTrack.height}
-                  </Text>
-                </View>
-                <View style={styles.videoStatBox}>
-                  <Text style={styles.videoStatLabel}>FPS</Text>
-                  <Text style={styles.videoStatValue}>
-                    {videoStats.videoTrack.frameRate?.toFixed(1) ?? '--'}
-                  </Text>
-                </View>
-              </View>
+              <VideoMetadataStats
+                videoTrack={videoStats.videoTrack}
+                codecInfo={codecInfo}
+                theme={theme}
+                styles={styles}
+              />
             )}
 
-            {/* Bitrate & Quality Row */}
-            {videoStats.videoTrack && (
-              <View style={styles.videoStatsRow}>
-                <View style={styles.videoStatBox}>
-                  <Text style={styles.videoStatLabel}>Bitrate</Text>
-                  <Text style={styles.videoStatValue}>
-                    {videoStats.videoTrack.bitrate
-                      ? `${(videoStats.videoTrack.bitrate / 1000000).toFixed(2)} Mbps`
-                      : '--'}
-                  </Text>
-                </View>
-                <View style={styles.videoStatBox}>
-                  <Text style={styles.videoStatLabel}>Quality</Text>
-                  <Text style={styles.videoStatValue}>
-                    {videoStats.videoTrack.height >= 2160 ? '4K UHD' :
-                      videoStats.videoTrack.height >= 1440 ? '1440p QHD' :
-                        videoStats.videoTrack.height >= 1080 ? '1080p FHD' :
-                          videoStats.videoTrack.height >= 720 ? '720p HD' :
-                            videoStats.videoTrack.height >= 480 ? '480p SD' :
-                              `${videoStats.videoTrack.height}p`}
-                  </Text>
-                </View>
-                <View style={styles.videoStatBox}>
-                  <Text style={styles.videoStatLabel}>Aspect</Text>
-                  <Text style={styles.videoStatValue}>
-                    {(videoStats.videoTrack.width / videoStats.videoTrack.height).toFixed(2)}
-                  </Text>
-                </View>
-              </View>
-            )}
+            <PlaybackStats
+              playbackRate={videoStats.playbackRate}
+              volume={videoStats.volume}
+              muted={videoStats.muted}
+              theme={theme}
+              styles={styles}
+            />
 
-            {/* Full Codec Info Row */}
-            {videoStats.videoTrack?.mimeType && (
-              <View style={styles.videoStatsRow}>
-                <View style={[styles.videoStatBox, { flex: 1 }]}>
-                  <Text style={styles.videoStatLabel}>Full Codec</Text>
-                  <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
-                    {codecInfo.fullName} - {videoStats.videoTrack.mimeType}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Playback Row */}
-            <View style={styles.videoStatsRow}>
-              <View style={styles.videoStatBox}>
-                <Text style={styles.videoStatLabel}>Speed</Text>
-                <Text style={styles.videoStatValue}>{videoStats.playbackRate}x</Text>
-              </View>
-              <View style={styles.videoStatBox}>
-                <Text style={styles.videoStatLabel}>Volume</Text>
-                <Text style={styles.videoStatValue}>{Math.round(videoStats.volume * 100)}%</Text>
-              </View>
-              <View style={styles.videoStatBox}>
-                <Text style={styles.videoStatLabel}>Muted</Text>
-                <Ionicons
-                  name={videoStats.muted ? 'volume-mute' : 'volume-high'}
-                  size={16}
-                  color={videoStats.muted ? theme.accent.error : theme.accent.success}
-                />
-              </View>
-            </View>
-
-            {/* Audio Track Row */}
             {videoStats.audioTrack && (
-              <View style={styles.videoStatsRow}>
-                <View style={[styles.videoStatBox, { flex: 1 }]}>
-                  <Text style={styles.videoStatLabel}>Audio</Text>
-                  <Text style={styles.videoStatValue}>
-                    {videoStats.audioTrack.label} ({videoStats.audioTrack.language})
-                  </Text>
-                </View>
-              </View>
+              <AudioTrackStats
+                audioTrack={videoStats.audioTrack}
+                styles={styles}
+              />
             )}
 
             {/* Device Stats */}

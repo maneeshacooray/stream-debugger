@@ -81,3 +81,9 @@
 **Learning:** Managing a reset timer (like 30s stall recovery) inside an effect that depends on high-frequency props (like `currentTime` updated every 500ms) causes the timer to be cleared and rescheduled on every update. This creates significant JS timer churn and, in this case, prevented the `stallCount` from ever resetting during active playback.
 
 **Action:** Isolate timer-based logic into its own `useEffect` that depends strictly on the state being timed (e.g., `stallCount`). This ensures the timer persists across renders of the high-frequency path and only reacts to actual state changes.
+
+## 2026-07-18 - Isolating stable metadata in high-frequency update paths
+
+**Learning:** Even with memoized components, high-frequency state updates (e.g., every 500ms) can trigger expensive React reconciliation across the entire sub-tree. Components that combine frequently changing values (currentTime) with static metadata (resolution, codecs) force the static parts to be reconciled unnecessarily.
+
+**Action:** Isolate stable UI rows into dedicated memoized sub-components. By passing only necessary props and memoizing derived display strings (duration, bitrate labels) at the right level, we maximize React's bail-out potential and reduce JS thread overhead in hot paths.
