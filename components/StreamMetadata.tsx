@@ -58,6 +58,15 @@ interface Segment {
 }
 
 // ============================================================================
+// Regular Expressions (Hoisted constants to prevent unnecessary compilation)
+// ============================================================================
+const BANDWIDTH_REGEX = /BANDWIDTH=(\d+)/;
+const RESOLUTION_REGEX = /RESOLUTION=([^\s,]+)/;
+const CODECS_REGEX = /CODECS="([^"]+)"/;
+const FRAME_RATE_REGEX = /FRAME-RATE=([\d.]+)/;
+const EXTINF_REGEX = /#EXTINF:([\d.]+)(?:,(.*))?/;
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 function formatBitrate(bps: number): string {
@@ -81,6 +90,10 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
    * Performance optimization: Process the manifest in a single pass over the lines
    * from a single split. This avoids redundant intermediate array allocations
    * from .map().filter() chains, which is critical for large VOD playlists.
+   *
+   * Performance optimization: Hoisting regular expression literals to module-level
+   * constants prevents unnecessary regular expression compilation and instantiation
+   * overhead on every loop iteration during manifest parsing.
    */
   const lines = content.split('\n');
 
@@ -153,25 +166,25 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
       currentVariant = {};
 
       // Parse bandwidth
-      const bwMatch = attrs.match(/BANDWIDTH=(\d+)/);
+      const bwMatch = attrs.match(BANDWIDTH_REGEX);
       if (bwMatch) {
         currentVariant.bandwidth = parseInt(bwMatch[1], 10);
       }
 
       // Parse resolution
-      const resMatch = attrs.match(/RESOLUTION=([^\s,]+)/);
+      const resMatch = attrs.match(RESOLUTION_REGEX);
       if (resMatch) {
         currentVariant.resolution = resMatch[1];
       }
 
       // Parse codecs
-      const codecMatch = attrs.match(/CODECS="([^"]+)"/);
+      const codecMatch = attrs.match(CODECS_REGEX);
       if (codecMatch) {
         currentVariant.codecs = codecMatch[1];
       }
 
       // Parse frame rate
-      const frMatch = attrs.match(/FRAME-RATE=([\d.]+)/);
+      const frMatch = attrs.match(FRAME_RATE_REGEX);
       if (frMatch) {
         currentVariant.frameRate = parseFloat(frMatch[1]);
       }
@@ -180,7 +193,7 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
     // Segment info (media playlist)
     if (line.startsWith('#EXTINF:')) {
       result.type = 'media';
-      const match = line.match(/#EXTINF:([\d.]+)(?:,(.*))?/);
+      const match = line.match(EXTINF_REGEX);
       if (match) {
         currentSegmentDuration = parseFloat(match[1]);
         currentSegmentTitle = match[2] || undefined;
