@@ -38,6 +38,7 @@ interface ParsedPlaylist {
   duration?: number;
   variants: VariantStream[];
   segments: Segment[];
+  totalSegments: number; // Real total count of segments parsed
   rawContent: string;
 }
 
@@ -102,6 +103,7 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
     isLive: true,
     variants: [],
     segments: [],
+    totalSegments: 0,
     rawContent: content,
   };
 
@@ -218,12 +220,18 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
         result.variants.push(currentVariant as VariantStream);
         currentVariant = null;
       } else if (currentSegmentDuration !== null) {
-        result.segments.push({
-          duration: currentSegmentDuration,
-          uri: line,
-          title: currentSegmentTitle,
-          discontinuity: hasDiscontinuity,
-        });
+        result.totalSegments++;
+        // Performance optimization: Avoid allocating and keeping thousands of segment
+        // objects in memory for large manifests. We only store up to 20 segments,
+        // which matches the maximum number rendered by the UI.
+        if (result.segments.length < 20) {
+          result.segments.push({
+            duration: currentSegmentDuration,
+            uri: line,
+            title: currentSegmentTitle,
+            discontinuity: hasDiscontinuity,
+          });
+        }
         currentSegmentDuration = null;
         currentSegmentTitle = undefined;
         hasDiscontinuity = false;
@@ -489,10 +497,12 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
                   {playlist.segments.length > 0 && (
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>
-                        Segments ({playlist.segments.length})
+                        Segments ({playlist.totalSegments})
                       </Text>
                       <View style={styles.segmentsList}>
-                        {playlist.segments.slice(0, 20).map((segment, idx) => (
+                        {/* Performance optimization: Mapping directly over playlist.segments
+                            without calling slice(0, 20) to avoid redundant array allocations. */}
+                        {playlist.segments.map((segment, idx) => (
                           <View key={idx} style={styles.segmentItem}>
                             <Text style={styles.segmentIndex}>#{idx + 1}</Text>
                             <Text style={styles.segmentDuration}>
@@ -508,9 +518,9 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
                             )}
                           </View>
                         ))}
-                        {playlist.segments.length > 20 && (
+                        {playlist.totalSegments > playlist.segments.length && (
                           <Text style={styles.moreSegments}>
-                            ... and {playlist.segments.length - 20} more segments
+                            ... and {playlist.totalSegments - playlist.segments.length} more segments
                           </Text>
                         )}
                       </View>
