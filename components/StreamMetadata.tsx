@@ -259,6 +259,55 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
   const [showRaw, setShowRaw] = useState(false);
   const lastFetchedUrl = useRef<string>('');
 
+  // Performance optimization: Memoize the rendered variants list to prevent
+  // recreating JSX elements during toggling of raw/parsed views or parent updates.
+  const renderedVariants = useMemo(() => {
+    if (!playlist || playlist.variants.length === 0) return null;
+    return playlist.variants.map((variant, idx) => (
+      <View key={idx} style={styles.variantItem}>
+        <View style={styles.variantHeader}>
+          <Text style={styles.variantResolution}>
+            {variant.resolution || 'Audio Only'}
+          </Text>
+          <Text style={styles.variantBitrate}>
+            {formatBitrate(variant.bandwidth)}
+          </Text>
+        </View>
+        {variant.codecs && (
+          <Text style={styles.variantCodecs}>{variant.codecs}</Text>
+        )}
+        {variant.frameRate && (
+          <Text style={styles.variantFps}>{variant.frameRate} fps</Text>
+        )}
+        <Text style={styles.variantUri} numberOfLines={1}>
+          {variant.uri}
+        </Text>
+      </View>
+    ));
+  }, [playlist, styles]);
+
+  // Performance optimization: Memoize the rendered segments list to avoid
+  // redundant array iterations and calling segment.duration.toFixed(3) on every render.
+  const renderedSegments = useMemo(() => {
+    if (!playlist || playlist.segments.length === 0) return null;
+    return playlist.segments.map((segment, idx) => (
+      <View key={idx} style={styles.segmentItem}>
+        <Text style={styles.segmentIndex}>#{idx + 1}</Text>
+        <Text style={styles.segmentDuration}>
+          {segment.duration.toFixed(3)}s
+        </Text>
+        <Text style={styles.segmentUri} numberOfLines={1}>
+          {segment.uri}
+        </Text>
+        {segment.discontinuity && (
+          <View style={styles.discontinuityBadge}>
+            <Text style={styles.discontinuityText}>DISC</Text>
+          </View>
+        )}
+      </View>
+    ));
+  }, [playlist, styles]);
+
   const fetchPlaylist = useCallback(async (url: string, force = false) => {
     if (!url) return;
 
@@ -469,27 +518,7 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
                       <Text style={styles.sectionTitle}>
                         Quality Levels ({playlist.variants.length})
                       </Text>
-                      {playlist.variants.map((variant, idx) => (
-                        <View key={idx} style={styles.variantItem}>
-                          <View style={styles.variantHeader}>
-                            <Text style={styles.variantResolution}>
-                              {variant.resolution || 'Audio Only'}
-                            </Text>
-                            <Text style={styles.variantBitrate}>
-                              {formatBitrate(variant.bandwidth)}
-                            </Text>
-                          </View>
-                          {variant.codecs && (
-                            <Text style={styles.variantCodecs}>{variant.codecs}</Text>
-                          )}
-                          {variant.frameRate && (
-                            <Text style={styles.variantFps}>{variant.frameRate} fps</Text>
-                          )}
-                          <Text style={styles.variantUri} numberOfLines={1}>
-                            {variant.uri}
-                          </Text>
-                        </View>
-                      ))}
+                      {renderedVariants}
                     </View>
                   )}
 
@@ -500,24 +529,7 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
                         Segments ({playlist.totalSegments})
                       </Text>
                       <View style={styles.segmentsList}>
-                        {/* Performance optimization: Mapping directly over playlist.segments
-                            without calling slice(0, 20) to avoid redundant array allocations. */}
-                        {playlist.segments.map((segment, idx) => (
-                          <View key={idx} style={styles.segmentItem}>
-                            <Text style={styles.segmentIndex}>#{idx + 1}</Text>
-                            <Text style={styles.segmentDuration}>
-                              {segment.duration.toFixed(3)}s
-                            </Text>
-                            <Text style={styles.segmentUri} numberOfLines={1}>
-                              {segment.uri}
-                            </Text>
-                            {segment.discontinuity && (
-                              <View style={styles.discontinuityBadge}>
-                                <Text style={styles.discontinuityText}>DISC</Text>
-                              </View>
-                            )}
-                          </View>
-                        ))}
+                        {renderedSegments}
                         {playlist.totalSegments > playlist.segments.length && (
                           <Text style={styles.moreSegments}>
                             ... and {playlist.totalSegments - playlist.segments.length} more segments
