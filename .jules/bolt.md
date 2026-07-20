@@ -87,3 +87,9 @@
 **Learning:** Even with memoized components, high-frequency state updates (e.g., every 500ms) can trigger expensive React reconciliation across the entire sub-tree. Components that combine frequently changing values (currentTime) with static metadata (resolution, codecs) force the static parts to be reconciled unnecessarily.
 
 **Action:** Isolate stable UI rows into dedicated memoized sub-components. By passing only necessary props and memoizing derived display strings (duration, bitrate labels) at the right level, we maximize React's bail-out potential and reduce JS thread overhead in hot paths.
+
+## 2026-07-20 - Unnecessary JSX element reconstruction in mapped lists
+
+**Learning:** Found that components mapping over arrays (like streams in settings, segments/variants in playlist metadata, and players in the multi-view grid) reconstruct the entire JSX element sub-tree on every single render cycle of their parent, even if the underlying data remains unchanged. This causes redundant Reconciliation work and garbage collection pressure, particularly for frequently updated views (such as the main screen during active logs stream, or settings screen during typing/testing).
+
+**Action:** Wrap inline list mappings and grid-rendering JSX blocks in `useMemo` hooks. By memoizing the rendered array of React elements with appropriate dependencies, we enable React to completely skip Reconciliation and reuse existing elements directly, significantly optimizing the rendering path during high-frequency updates.

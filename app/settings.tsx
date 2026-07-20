@@ -712,6 +712,45 @@ export default function SettingsScreen() {
     }
   }, [settings.multiViewStreamIds, settings.maxMultiViewStreams, setMultiViewStreams]);
 
+  // Performance optimization: Memoize the rendered stream list items to prevent
+  // recreating JSX elements on unrelated state updates (like typing, modal display, etc.)
+  const renderedStreamItems = useMemo(() => {
+    return streams.map(stream => (
+      <StreamItem
+        key={stream.id}
+        stream={stream}
+        isDefault={settings.defaultStreamId === stream.id}
+        onPress={handleEditStream}
+        onSetDefault={handleSetDefault}
+        onToggleFavorite={handleToggleFavorite}
+        theme={theme}
+        styles={styles}
+      />
+    ));
+  }, [streams, settings.defaultStreamId, handleEditStream, handleSetDefault, handleToggleFavorite, theme, styles]);
+
+  // Performance optimization: Memoize the rendered multi-view selection items to
+  // avoid redundant list allocations and mapping operations during tab switching or limits adjustment.
+  const renderedMultiViewItems = useMemo(() => {
+    const multiViewStreamIds = settings.multiViewStreamIds || [];
+    return streams.map((stream) => {
+      const isSelected = multiViewStreamIds.includes(stream.id);
+      const selectionIndex = multiViewStreamIds.indexOf(stream.id);
+
+      return (
+        <MultiViewSelectionItem
+          key={stream.id}
+          stream={stream}
+          isSelected={isSelected}
+          selectionIndex={selectionIndex}
+          onToggle={toggleMultiViewStream}
+          theme={theme}
+          styles={styles}
+        />
+      );
+    });
+  }, [streams, settings.multiViewStreamIds, toggleMultiViewStream, theme, styles]);
+
   const handleIncrementLimit = useCallback(() => {
     const current = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
     if (current < 16) setMaxMultiViewStreams(current + 1);
@@ -853,18 +892,7 @@ export default function SettingsScreen() {
                 </View>
               ) : (
                 <View style={styles.streamList}>
-                  {streams.map(stream => (
-                    <StreamItem
-                      key={stream.id}
-                      stream={stream}
-                      isDefault={settings.defaultStreamId === stream.id}
-                      onPress={handleEditStream}
-                      onSetDefault={handleSetDefault}
-                      onToggleFavorite={handleToggleFavorite}
-                      theme={theme}
-                      styles={styles}
-                    />
-                  ))}
+                  {renderedStreamItems}
                 </View>
               )}
             </View>
@@ -917,22 +945,7 @@ export default function SettingsScreen() {
             </Text>
 
             <View style={styles.multiViewList}>
-              {streams.map((stream, index) => {
-                const isSelected = settings.multiViewStreamIds?.includes(stream.id) || false;
-                const selectionIndex = settings.multiViewStreamIds?.indexOf(stream.id) ?? -1;
-
-                return (
-                  <MultiViewSelectionItem
-                    key={stream.id}
-                    stream={stream}
-                    isSelected={isSelected}
-                    selectionIndex={selectionIndex}
-                    onToggle={toggleMultiViewStream}
-                    theme={theme}
-                    styles={styles}
-                  />
-                );
-              })}
+              {renderedMultiViewItems}
             </View>
           </View>
         )}

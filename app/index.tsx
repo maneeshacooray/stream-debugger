@@ -1546,6 +1546,32 @@ export default function StreamDebugger() {
     loadStreamConfig(stream);
   }, [loadStreamConfig]);
 
+  // Performance optimization: Memoize the rendered multi-view player grid.
+  // This avoids recreating JSX element nodes for player cards, empty placeholders,
+  // and row containers on every single log update or high-frequency event.
+  const renderedMultiViewGrid = useMemo(() => {
+    if (!multiViewMode) return null;
+
+    return multiViewGrid.rows.map((row, rowIndex) => (
+      <View key={`row-${rowIndex}`} style={styles.multiViewRow}>
+        {row.map((streamItem) => (
+          <MultiViewPlayer
+            key={`stream-${streamItem.id}`}
+            stream={streamItem}
+            onLog={handleMultiViewLog}
+            onPress={handleMultiViewPress}
+            theme={theme}
+            styles={styles}
+          />
+        ))}
+        {/* Fill empty spots in the last row to maintain grid alignment */}
+        {Array.from({ length: multiViewGrid.columns - row.length }).map((_, i) => (
+          <View key={`empty-${rowIndex}-${i}`} style={{ flex: 1 }} />
+        ))}
+      </View>
+    ));
+  }, [multiViewGrid, multiViewMode, handleMultiViewLog, handleMultiViewPress, theme, styles]);
+
   // ============================================================================
   // Actions
   // ============================================================================
@@ -1676,24 +1702,7 @@ export default function StreamDebugger() {
                 </Pressable>
               </View>
               <View key={multiViewReloadKey} style={{ gap: 8 }}>
-                {multiViewGrid.rows.map((row, rowIndex) => (
-                  <View key={`row-${rowIndex}`} style={styles.multiViewRow}>
-                    {row.map((streamItem) => (
-                      <MultiViewPlayer
-                        key={`stream-${streamItem.id}`}
-                        stream={streamItem}
-                        onLog={handleMultiViewLog}
-                        onPress={handleMultiViewPress}
-                        theme={theme}
-                        styles={styles}
-                      />
-                    ))}
-                    {/* Fill empty spots in the last row to maintain grid alignment */}
-                    {Array.from({ length: multiViewGrid.columns - row.length }).map((_, i) => (
-                      <View key={`empty-${rowIndex}-${i}`} style={{ flex: 1 }} />
-                    ))}
-                  </View>
-                ))}
+                {renderedMultiViewGrid}
               </View>
             </View>
           )}
