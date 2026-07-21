@@ -62,13 +62,16 @@ const StreamEditor = memo(function StreamEditor({ stream, onSave, onCancel, onDe
   const [previewStatus, setPreviewStatus] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
 
   // Preview player - only created when showPreview is true and URL is valid
-  const previewPlayer = useVideoPlayer(showPreview && url.trim() ? url.trim() : null, (p) => {
-    if (p) {
-      p.loop = true;
-      p.muted = true;
-      p.play();
+  const previewPlayer = useVideoPlayer(showPreview && url.trim() ? url.trim() : null);
+
+  // Configure preview player properties on initialization
+  useEffect(() => {
+    if (previewPlayer) {
+      previewPlayer.loop = true;
+      previewPlayer.muted = true;
+      previewPlayer.play();
     }
-  });
+  }, [previewPlayer]);
 
   // Listen to preview player status
   useEffect(() => {
@@ -693,6 +696,16 @@ export default function SettingsScreen() {
     toggleFavorite(id);
   }, [toggleFavorite]);
 
+  // Memoized callbacks to avoid inline arrow functions in render
+  const handleCancelEdit = useCallback(() => {
+    setEditingStream(null);
+    setIsAddingNew(false);
+  }, []);
+
+  const handleCloseImport = useCallback(() => {
+    setShowImportModal(false);
+  }, []);
+
   // Toggle stream in multi-view selection
   const toggleMultiViewStream = useCallback((streamId: string) => {
     const currentIds = settings.multiViewStreamIds || [];
@@ -837,10 +850,7 @@ export default function SettingsScreen() {
         <StreamEditor
           stream={editingStream || undefined}
           onSave={handleSaveStream}
-          onCancel={() => {
-            setEditingStream(null);
-            setIsAddingNew(false);
-          }}
+          onCancel={handleCancelEdit}
           onDelete={editingStream ? handleDeleteStream : undefined}
           theme={theme}
           styles={styles}
@@ -856,7 +866,7 @@ export default function SettingsScreen() {
       <ImportModal
         visible={showImportModal}
         onImport={handleImport}
-        onCancel={() => setShowImportModal(false)}
+        onCancel={handleCloseImport}
         theme={theme}
         styles={styles}
       />
