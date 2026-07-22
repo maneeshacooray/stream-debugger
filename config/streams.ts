@@ -196,16 +196,24 @@ class StreamStorage {
     if (index === -1) return false;
 
     this.streams.splice(index, 1);
-    await this._saveStreams();
 
-    // Clean up references
-    if (this.settings.defaultStreamId === id) {
-      this.settings.defaultStreamId = this.streams[0]?.id || null;
+    const needsSettingsCleanup = this.settings.defaultStreamId === id ||
+      this.settings.multiViewStreamIds.includes(id);
+
+    // Performance optimization: Avoid double notifications when settings cleanup is required.
+    // Save streams without notifying listeners immediately.
+    await this._saveStreams(!needsSettingsCleanup);
+
+    // Clean up references if needed
+    if (needsSettingsCleanup) {
+      if (this.settings.defaultStreamId === id) {
+        this.settings.defaultStreamId = this.streams[0]?.id || null;
+      }
+      this.settings.multiViewStreamIds = this.settings.multiViewStreamIds.filter(
+        sid => sid !== id
+      );
+      await this._saveSettings(true);
     }
-    this.settings.multiViewStreamIds = this.settings.multiViewStreamIds.filter(
-      sid => sid !== id
-    );
-    await this._saveSettings();
 
     return true;
   }
@@ -286,7 +294,10 @@ class StreamStorage {
         this.settings = { ...this.settings, ...data.settings };
       }
 
-      await Promise.all([this._saveStreams(), this._saveSettings()]);
+      // Performance optimization: Save both streams and settings without notifying
+      // individually, then dispatch exactly one notification at the end.
+      await Promise.all([this._saveStreams(false), this._saveSettings(false)]);
+      this._notifyListeners();
       return { success: true };
     } catch {
       return { success: false, error: 'Failed to parse import data' };
@@ -294,7 +305,6 @@ class StreamStorage {
   }
 
   async clearAllData(): Promise<void> {
-    this.streams = [];
     this.streams = [];
     this.settings = {
       defaultStreamId: null,
@@ -307,25 +317,32 @@ class StreamStorage {
       AsyncStorage.removeItem(STORAGE_KEYS.SETTINGS),
       AsyncStorage.removeItem(STORAGE_KEYS.INITIALIZED),
     ]);
+    // Performance optimization: Notify listeners of data clear operation so that
+    // active React hooks and UI components update automatically and remain in sync.
+    this._notifyListeners();
   }
 
   // ============================================================================
   // Private Methods
   // ============================================================================
 
-  private async _saveStreams(): Promise<void> {
+  private async _saveStreams(notify = true): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.STREAMS, JSON.stringify(this.streams));
-      this._notifyListeners();
+      if (notify) {
+        this._notifyListeners();
+      }
     } catch (error) {
       console.error('Failed to save streams:', error);
     }
   }
 
-  private async _saveSettings(): Promise<void> {
+  private async _saveSettings(notify = true): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
-      this._notifyListeners();
+      if (notify) {
+        this._notifyListeners();
+      }
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
@@ -347,7 +364,6 @@ export function useStreamConfig() {
     maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
     themeMode: 'system',
   });
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Initialize and load data
   useEffect(() => {
@@ -364,7 +380,9 @@ export function useStreamConfig() {
 
     init();
 
-    // Subscribe to updates from other hooks/instances
+    // Subscribe to updates from other hooks/instances.
+    // Performance optimization: This subscription stays active for the lifetime
+    // of the hook, completely eliminating resubscription overhead.
     const unsubscribe = streamStorage.subscribe(() => {
       if (mounted) {
         setStreams(streamStorage.getAllStreams());
@@ -376,47 +394,49 @@ export function useStreamConfig() {
       mounted = false;
       unsubscribe();
     };
-  }, [refreshKey]);
+  }, []);
 
+  // Performance optimization: refresh function is now a stable callback that
+  // synchronously fetches the latest streams and settings from storage.
   const refresh = useCallback(() => {
-    setRefreshKey(k => k + 1);
+    setStreams(streamStorage.getAllStreams());
+    setSettings(streamStorage.getSettings());
   }, []);
 
   // Stream operations
+  // Performance optimization: callbacks are fully stable (empty dependency array)
+  // because we no longer call refresh() redundantly (the active storage subscription
+  // automatically handles reactive updates). This prevents breaking downstream React.memo.
   const addStream = useCallback(
     async (name: string, url: string, isLive = false, isFavorite = false) => {
       const stream = await streamStorage.addStream(name, url, isLive, isFavorite);
-      refresh();
       return stream;
     },
-    [refresh]
+    []
   );
 
   const updateStream = useCallback(
     async (id: string, updates: Partial<Omit<StreamConfig, 'id' | 'createdAt'>>) => {
       const result = await streamStorage.updateStream(id, updates);
-      refresh();
       return result;
     },
-    [refresh]
+    []
   );
 
   const deleteStream = useCallback(
     async (id: string) => {
       const result = await streamStorage.deleteStream(id);
-      refresh();
       return result;
     },
-    [refresh]
+    []
   );
 
   const toggleFavorite = useCallback(
     async (id: string) => {
       const result = await streamStorage.toggleFavorite(id);
-      refresh();
       return result;
     },
-    [refresh]
+    []
   );
 
   const recordUsage = useCallback(
@@ -430,33 +450,29 @@ export function useStreamConfig() {
   const setDefaultStream = useCallback(
     async (id: string | null) => {
       await streamStorage.setDefaultStream(id);
-      refresh();
     },
-    [refresh]
+    []
   );
 
   const setMultiViewStreams = useCallback(
     async (ids: string[]) => {
       await streamStorage.setMultiViewStreams(ids);
-      refresh();
     },
-    [refresh]
+    []
   );
 
   const setMaxMultiViewStreams = useCallback(
     async (max: number) => {
       await streamStorage.setMaxMultiViewStreams(max);
-      refresh();
     },
-    [refresh]
+    []
   );
 
   const setThemeMode = useCallback(
     async (mode: 'system' | 'light' | 'dark') => {
       await streamStorage.setThemeMode(mode);
-      refresh();
     },
-    [refresh]
+    []
   );
 
   // Getters - depend on streams/settings state to return fresh data after updates
@@ -484,16 +500,14 @@ export function useStreamConfig() {
   const importData = useCallback(
     async (json: string) => {
       const result = await streamStorage.importData(json);
-      if (result.success) refresh();
       return result;
     },
-    [refresh]
+    []
   );
 
   const clearAllData = useCallback(async () => {
     await streamStorage.clearAllData();
-    refresh();
-  }, [refresh]);
+  }, []);
 
   return useMemo(() => ({
     isLoading,
