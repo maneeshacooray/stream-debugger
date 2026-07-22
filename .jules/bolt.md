@@ -16,7 +16,7 @@
 
 **Action:** Implement a bail-out strategy in high-frequency listeners (like `timeUpdate`). Skip state updates if fast-changing values (like `currentTime`) have changed by less than a threshold (e.g., 100ms) and metadata (tracks, status) remains unchanged. Memoize secondary computations (like codec parsing) that depend on this state.
 
-## 2026-06-30 - Optimizing style allocations in high-frequency lists
+## 2026-07-30 - Optimizing style allocations in high-frequency lists
 
 **Learning:** `LogEntryItem` was allocating style objects for background colors (levels and categories) inside every instance, even when memoized. In high-frequency log paths, this creates significant garbage collection pressure. React Native's `StyleSheet` is optimized for static style objects.
 
@@ -93,3 +93,9 @@
 **Learning:** Found that components mapping over arrays (like streams in settings, segments/variants in playlist metadata, and players in the multi-view grid) reconstruct the entire JSX element sub-tree on every single render cycle of their parent, even if the underlying data remains unchanged. This causes redundant Reconciliation work and garbage collection pressure, particularly for frequently updated views (such as the main screen during active logs stream, or settings screen during typing/testing).
 
 **Action:** Wrap inline list mappings and grid-rendering JSX blocks in `useMemo` hooks. By memoizing the rendered array of React elements with appropriate dependencies, we enable React to completely skip Reconciliation and reuse existing elements directly, significantly optimizing the rendering path during high-frequency updates.
+
+## 2026-07-22 - Storage Notification Batching and Subscription Stability
+
+**Learning:** Found a performance bottleneck where asynchronous storage mutations sequentially writing updates (e.g., stream list and settings) triggered duplicate listener notifications. This caused downstream hooks to perform multiple redundant state updates and render cycles. Additionally, using a transient refresh key to force-trigger hook updates caused the global subscription to be torn down and recreated, breaking callback memoization stability.
+
+**Action:** Design storage-saving methods to accept an optional `notify` parameter to skip notifications for intermediate writes and fire a single notification at the end of the transaction. Keep storage subscriptions alive for the lifetime of the hook (by omitting transient keys from the subscription `useEffect` dependency array) to achieve fully stable, memoized operations.
