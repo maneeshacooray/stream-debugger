@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MAX_MULTI_VIEW_STREAMS, StreamConfig, useStreamConfig } from '../config/streams';
+import { MAX_MULTI_VIEW_STREAMS, StreamConfig, streamStorage, useStreamConfig } from '../config/streams';
 import { ABOUT } from '../constants/about';
 import { defaultTheme, Theme, useAppTheme } from '../constants/appTheme';
 import { useResponsive } from '../hooks/useResponsive';
@@ -707,8 +707,13 @@ export default function SettingsScreen() {
   }, []);
 
   // Toggle stream in multi-view selection
+  // Performance optimization: Using streamStorage.getSettings() directly inside the callback
+  // makes the callback fully stable (empty dependency array except for setMultiViewStreams).
+  // This prevents breaking React.memo on downstream MultiViewSelectionItem child components
+  // during selection changes, which avoids unnecessary re-renders of all selection items.
   const toggleMultiViewStream = useCallback((streamId: string) => {
-    const currentIds = settings.multiViewStreamIds || [];
+    const currentSettings = streamStorage.getSettings();
+    const currentIds = currentSettings.multiViewStreamIds || [];
     const isSelected = currentIds.includes(streamId);
 
     if (isSelected) {
@@ -716,14 +721,14 @@ export default function SettingsScreen() {
       setMultiViewStreams(currentIds.filter(id => id !== streamId));
     } else {
       // Add to multi-view (max streams)
-      const limit = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+      const limit = currentSettings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
       if (currentIds.length >= limit) {
         Alert.alert('Limit Reached', `You can select up to ${limit} streams for multi-view mode.`);
         return;
       }
       setMultiViewStreams([...currentIds, streamId]);
     }
-  }, [settings.multiViewStreamIds, settings.maxMultiViewStreams, setMultiViewStreams]);
+  }, [setMultiViewStreams]);
 
   // Performance optimization: Memoize the rendered stream list items to prevent
   // recreating JSX elements on unrelated state updates (like typing, modal display, etc.)
@@ -764,15 +769,19 @@ export default function SettingsScreen() {
     });
   }, [streams, settings.multiViewStreamIds, toggleMultiViewStream, theme, styles]);
 
+  // Performance optimization: Using streamStorage.getSettings() directly inside the callback
+  // makes the callback fully stable, avoiding recreation when maxMultiViewStreams changes.
   const handleIncrementLimit = useCallback(() => {
-    const current = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+    const currentSettings = streamStorage.getSettings();
+    const current = currentSettings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
     if (current < 16) setMaxMultiViewStreams(current + 1);
-  }, [settings.maxMultiViewStreams, setMaxMultiViewStreams]);
+  }, [setMaxMultiViewStreams]);
 
   const handleDecrementLimit = useCallback(() => {
-    const current = settings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
+    const currentSettings = streamStorage.getSettings();
+    const current = currentSettings.maxMultiViewStreams || MAX_MULTI_VIEW_STREAMS;
     if (current > 1) setMaxMultiViewStreams(current - 1);
-  }, [settings.maxMultiViewStreams, setMaxMultiViewStreams]);
+  }, [setMaxMultiViewStreams]);
 
   const handleSaveStream = useCallback(
     async (name: string, url: string, isLive: boolean, isFavorite: boolean) => {

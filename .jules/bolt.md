@@ -99,3 +99,9 @@
 **Learning:** Found a performance bottleneck where asynchronous storage mutations sequentially writing updates (e.g., stream list and settings) triggered duplicate listener notifications. This caused downstream hooks to perform multiple redundant state updates and render cycles. Additionally, using a transient refresh key to force-trigger hook updates caused the global subscription to be torn down and recreated, breaking callback memoization stability.
 
 **Action:** Design storage-saving methods to accept an optional `notify` parameter to skip notifications for intermediate writes and fire a single notification at the end of the transaction. Keep storage subscriptions alive for the lifetime of the hook (by omitting transient keys from the subscription `useEffect` dependency array) to achieve fully stable, memoized operations.
+
+## 2026-07-24 - Callback Stability via Singleton State Reading
+
+**Learning:** Passing local state or hooks-provided state variables as dependencies to interaction callback functions (such as toggle/selection handlers) causes those callbacks to be re-created on every state change. This breaks React.memo on downstream children rendered in list loops. Since settings and config are stored in a synchronous-read-capable singleton manager (streamStorage), reading the state synchronously inside the callback directly from the manager removes all state variables from the dependencies array, making the callback fully stable.
+
+**Action:** When a callback modifies state and depends on other parts of that same state, retrieve the dependencies synchronously from a singleton or reference within the callback instead of using local state variables. This achieves O(1) callback reference stability and maintains the effectiveness of React.memo downstream.
