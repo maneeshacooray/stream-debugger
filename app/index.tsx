@@ -423,7 +423,7 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
       translateX.value = withSpring(0);
       translateY.value = withSpring(0);
     }
-  }, [enabled]);
+  }, [enabled, scale, translateX, translateY]);
 
   const pinchGesture = Gesture.Pinch()
     .enabled(enabled)
@@ -522,7 +522,7 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ stream, onLog, onPress, 
       if (mountedRef.current) {
         try {
           player.play();
-        } catch (e) {
+        } catch {
           // Ignore errors
         }
       }

@@ -4,7 +4,7 @@ import { NetworkQualityIndicator, NetworkStats } from '../components/NetworkQual
 
 export default function BoltVerifyStall() {
   const [currentTime, setCurrentTime] = useState(5.0);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const isPlaying = true;
   const [isForcingStall, setIsForcingStall] = useState(false);
   const [stats, setStats] = useState<NetworkStats | null>(null);
 
