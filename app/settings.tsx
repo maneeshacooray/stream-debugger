@@ -480,7 +480,7 @@ const ImportModal = memo(function ImportModal({ visible, onImport, onCancel, the
     try {
       await onImport(jsonText);
       onCancel();
-    } catch (error) {
+    } catch {
       // Error handling is done in parent
     } finally {
       setIsImporting(false);
