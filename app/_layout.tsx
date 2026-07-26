@@ -3,12 +3,12 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useStreamConfig } from '../config/streams';
+import { useThemeMode } from '../config/streams';
 import { useAppTheme } from '../constants/appTheme';
 
 export default function RootLayout() {
-  const { settings } = useStreamConfig();
-  const theme = useAppTheme(settings.themeMode);
+  const themeMode = useThemeMode();
+  const theme = useAppTheme(themeMode);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -558,3 +558,39 @@ export function useStreamConfig() {
     refresh,
   ]);
 }
+
+/**
+ * Performance optimization: A lightweight hook that only subscribes to the theme mode.
+ * This prevents parent layouts or components from re-rendering on every stream configuration,
+ * favorite, or usage update, completely isolating them from frequent changes.
+ */
+export function useThemeMode() {
+  const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
+
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      await streamStorage.initialize();
+      if (mounted) {
+        setThemeMode(streamStorage.getSettings().themeMode);
+      }
+    };
+
+    init();
+
+    const unsubscribe = streamStorage.subscribe(() => {
+      if (mounted) {
+        const mode = streamStorage.getSettings().themeMode;
+        setThemeMode(prev => prev === mode ? prev : mode);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  return themeMode;
+}
