@@ -74,13 +74,22 @@ export const DeviceStats = memo(function DeviceStats({ theme }: DeviceStatsProps
   });
 
   // Listen for dimension changes
+  // Performance optimization: Implement a state update bail-out strategy in the dimension listener.
+  // This avoids redundant state updates and re-renders if the rounded screen dimensions have not actually changed.
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setDeviceInfo(prev => ({
-        ...prev,
-        screenWidth: Math.round(window.width),
-        screenHeight: Math.round(window.height),
-      }));
+      const nextWidth = Math.round(window.width);
+      const nextHeight = Math.round(window.height);
+      setDeviceInfo(prev => {
+        if (prev.screenWidth === nextWidth && prev.screenHeight === nextHeight) {
+          return prev;
+        }
+        return {
+          ...prev,
+          screenWidth: nextWidth,
+          screenHeight: nextHeight,
+        };
+      });
     });
 
     return () => subscription.remove();
