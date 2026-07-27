@@ -38,6 +38,13 @@ import { categoryColors, logColors, Theme, useAppTheme } from '../constants/appT
 // ============================================================================
 const MAX_LOGS = 500;
 
+const UPPERCASE_LEVELS = {
+  info: 'INFO',
+  warn: 'WARN',
+  error: 'ERROR',
+  debug: 'DEBUG',
+} as const;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -52,6 +59,7 @@ interface LogEntry {
   level: LogLevel;
   category: LogCategory;
   message: string;
+  messageLower: string; // Pre-calculated lowercase message for high-performance filtering
 }
 
 // ============================================================================
@@ -141,7 +149,7 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
         <Text style={styles.logTime}>{log.time}</Text>
         <View style={[styles.logLevel, styles[`logLevel_${log.level}`]]}>
           <Text style={[styles.logLevelText, styles[`logLevelText_${log.level}`]]}>
-            {log.level.toUpperCase()}
+            {UPPERCASE_LEVELS[log.level]}
           </Text>
         </View>
         <View style={[styles.logCategory, styles[`logCategory_${log.category}`]]}>
@@ -999,8 +1007,13 @@ const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, st
       if (hasCategoryFilter && log.category !== categoryFilter) {
         matches = false;
       } else if (filter) {
+        /**
+         * Performance optimization: Using pre-calculated log.messageLower
+         * eliminates calling log.message.toLowerCase() in the loop over 500 logs,
+         * avoiding up to 500 string allocations and GC cycles on every log update.
+         */
         matches = (
-          log.message.toLowerCase().includes(lowerFilter) ||
+          log.messageLower.includes(lowerFilter) ||
           log.category.includes(lowerFilter) ||
           log.level.includes(lowerFilter)
         );
@@ -1033,7 +1046,7 @@ const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, st
 
   const exportLogs = useCallback(async () => {
     const logText = filteredLogs.map(log =>
-      `[${log.time}] [${log.level.toUpperCase()}] [${log.category}] ${log.message}`
+      `[${log.time}] [${UPPERCASE_LEVELS[log.level]}] [${log.category}] ${log.message}`
     ).join('\n');
 
     try {
@@ -1318,6 +1331,7 @@ export default function StreamDebugger() {
       level,
       category,
       message,
+      messageLower: message.toLowerCase(),
     };
 
     setLogs(prev => {
