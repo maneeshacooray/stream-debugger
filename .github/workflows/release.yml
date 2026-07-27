@@ -17,9 +17,6 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    # Use the environment where EXPO_TOKEN is stored (e.g. "production").
-    # If EXPO_TOKEN is a repository secret (not under an environment), remove this line.
-    environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,19 +53,31 @@ jobs:
       - name: EAS Build (Android APK)
         id: build
         run: |
-          eas build --platform android --profile release-apk --non-interactive --wait 2>&1 | tee build.log
+          eas build --platform android --profile release-apk --non-interactive --wait --json > build.json
+          cat build.json
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Get APK download URL
         id: artifact
         run: |
-          BUILD_JSON=$(eas build:list --platform android --status finished --limit 1 --build-profile release-apk --git-commit-hash ${{ github.sha }} --non-interactive --json 2>/dev/null || echo "[]")
-          APK_URL=$(echo "$BUILD_JSON" | jq -r '.[0].artifacts.applicationArchiveUrl // empty')
-          if [ -z "$APK_URL" ]; then
-            echo "Could not get APK URL from build list"
+          APK_URL=""
+          if [ -f build.json ]; then
+            APK_URL=$(jq -r '.[0].artifacts.applicationArchiveUrl // .artifacts.applicationArchiveUrl // empty' build.json 2>/dev/null)
+          fi
+
+          if [ -z "$APK_URL" ] || [ "$APK_URL" = "null" ]; then
+            echo "Parsing build.json failed or was empty. Trying fallback list query..."
+            BUILD_JSON_LIST=$(eas build:list --platform android --status finished --limit 1 --build-profile release-apk --non-interactive --json 2>/dev/null || echo "[]")
+            APK_URL=$(echo "$BUILD_JSON_LIST" | jq -r '.[0].artifacts.applicationArchiveUrl // empty')
+          fi
+
+          if [ -z "$APK_URL" ] || [ "$APK_URL" = "null" ]; then
+            echo "Error: Could not retrieve APK download URL."
             exit 1
           fi
+
+          echo "APK URL: $APK_URL"
           echo "url=$APK_URL" >> $GITHUB_OUTPUT
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -76,11 +85,8 @@ jobs:
       - name: Download APK
         run: |
           curl -L -f -o stream-debugger.apk \
-            -H "Authorization: Bearer $EXPO_TOKEN" \
             "${{ steps.artifact.outputs.url }}"
           ls -la stream-debugger.apk
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Create GitHub Release
         id: release
