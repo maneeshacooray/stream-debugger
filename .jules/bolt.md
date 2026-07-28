@@ -105,3 +105,9 @@
 **Learning:** Passing local state or hooks-provided state variables as dependencies to interaction callback functions (such as toggle/selection handlers) causes those callbacks to be re-created on every state change. This breaks React.memo on downstream children rendered in list loops. Since settings and config are stored in a synchronous-read-capable singleton manager (streamStorage), reading the state synchronously inside the callback directly from the manager removes all state variables from the dependencies array, making the callback fully stable.
 
 **Action:** When a callback modifies state and depends on other parts of that same state, retrieve the dependencies synchronously from a singleton or reference within the callback instead of using local state variables. This achieves O(1) callback reference stability and maintains the effectiveness of React.memo downstream.
+
+## 2026-07-26 - Garbage collection pressure in high-frequency list filtering
+
+**Learning:** During active stream playback, the log stream updates rapidly. If the user enters a filter query, the filtering logic runs on every log update. Performing `.toLowerCase()` inside the O(N) filtering loop on every single render creates hundreds of temporary string allocations, generating high garbage collection pressure on the JavaScript thread. Additionally, dynamic `.toUpperCase()` formatting inside list items allocates strings unnecessarily on every render cycle.
+
+**Action:** Pre-calculate case-insensitive properties (like `messageLower`) exactly once when a log item is created. For finite string values (like log levels), replace dynamic string conversions with static O(1) constant-time lookup maps (like `UPPERCASE_LEVELS`) to completely eliminate heap allocation overhead in hot list rendering paths.
