@@ -63,6 +63,49 @@ interface LogEntry {
 }
 
 // ============================================================================
+// Log Manager Class (Pub/Sub subscription model to prevent root re-renders)
+// ============================================================================
+class LogManager {
+  private logs: LogEntry[] = [];
+  private listeners: Set<() => void> = new Set();
+
+  addLog(entry: LogEntry): void {
+    /**
+     * Performance optimization: Reduce array allocations and copies.
+     * Instead of [...prev, entry].slice(-MAX_LOGS) which copies elements twice,
+     * we slice first (if at limit) and then push, or just copy once and push.
+     */
+    if (this.logs.length >= MAX_LOGS) {
+      this.logs = this.logs.slice(1);
+    }
+    this.logs.push(entry);
+    this._notify();
+  }
+
+  getLogs(): LogEntry[] {
+    return [...this.logs];
+  }
+
+  clear(): void {
+    this.logs = [];
+    this._notify();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private _notify(): void {
+    this.listeners.forEach(listener => listener());
+  }
+}
+
+export const logManager = new LogManager();
+
+// ============================================================================
 // Helpers
 // ============================================================================
 const formatTime = (seconds: number): string => {
@@ -972,7 +1015,6 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
 // Logs Tab Content Component
 // ============================================================================
 interface LogsTabContentProps {
-  logs: LogEntry[];
   clearLogs: () => void;
   theme: Theme;
   styles: any;
@@ -984,7 +1026,17 @@ interface LogsTabContentProps {
  * from triggering re-renders of the entire application during high-frequency
  * log updates or when the user is interacting with the logs (filtering, scrolling).
  */
-const LogsTabContent = memo(function LogsTabContent({ logs, clearLogs, theme, styles, scrollRef }: LogsTabContentProps) {
+const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, scrollRef }: LogsTabContentProps) {
+  const [logs, setLogs] = useState<LogEntry[]>(() => logManager.getLogs());
+
+  // Subscribe to logManager on mount to automatically receive log updates
+  useEffect(() => {
+    const unsubscribe = logManager.subscribe(() => {
+      setLogs(logManager.getLogs());
+    });
+    return unsubscribe;
+  }, []);
+
   const [filter, setFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
   const [autoScroll, setAutoScroll] = useState(false);
@@ -1246,7 +1298,6 @@ export default function StreamDebugger() {
   const [currentStreamId, setCurrentStreamId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerStatus, setPlayerStatus] = useState<string>('idle');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showPlayer, setShowPlayer] = useState(true);
   const [multiViewMode, setMultiViewMode] = useState(false);
   const [multiViewReloadKey, setMultiViewReloadKey] = useState(0);
@@ -1334,16 +1385,7 @@ export default function StreamDebugger() {
       messageLower: message.toLowerCase(),
     };
 
-    setLogs(prev => {
-      /**
-       * Performance optimization: Reduce array allocations and copies.
-       * Instead of [...prev, entry].slice(-MAX_LOGS) which copies elements twice,
-       * we slice first (if at limit) and then push, or just copy once and push.
-       */
-      const next = prev.length >= MAX_LOGS ? prev.slice(1) : [...prev];
-      next.push(entry);
-      return next;
-    });
+    logManager.addLog(entry);
   }, []);
 
 
@@ -1590,7 +1632,7 @@ export default function StreamDebugger() {
   // Actions
   // ============================================================================
   const clearLogs = useCallback(() => {
-    setLogs([]);
+    logManager.clear();
     addLog('system', 'info', 'Logs cleared');
   }, [addLog]);
 
@@ -1750,7 +1792,6 @@ export default function StreamDebugger() {
                 {/* LOGS TAB - Category Tabs, Log Controls, Logs List */}
                 {activeMainTab === 'logs' && (
                   <LogsTabContent
-                    logs={logs}
                     clearLogs={clearLogs}
                     theme={theme}
                     styles={styles}

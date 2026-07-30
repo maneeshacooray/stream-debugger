@@ -111,3 +111,9 @@
 **Learning:** During active stream playback, the log stream updates rapidly. If the user enters a filter query, the filtering logic runs on every log update. Performing `.toLowerCase()` inside the O(N) filtering loop on every single render creates hundreds of temporary string allocations, generating high garbage collection pressure on the JavaScript thread. Additionally, dynamic `.toUpperCase()` formatting inside list items allocates strings unnecessarily on every render cycle.
 
 **Action:** Pre-calculate case-insensitive properties (like `messageLower`) exactly once when a log item is created. For finite string values (like log levels), replace dynamic string conversions with static O(1) constant-time lookup maps (like `UPPERCASE_LEVELS`) to completely eliminate heap allocation overhead in hot list rendering paths.
+
+## 2026-07-28 - Root re-renders from high-frequency logging state
+
+**Learning:** Keeping high-frequency stream logging state in the root component (StreamDebugger) causes the entire application tree to re-render every time a log is added. This triggers expensive React reconciliation and re-allocation across all unrelated components (like player views and tab navigation), degrading performance during playback.
+
+**Action:** Decouple high-frequency logging state from the root using an external module-level LogManager with a pub/sub model. Allow only the active logs tab to subscribe to the log state when mounted, completely eliminating background log re-renders of the root application component when other tabs are active.
