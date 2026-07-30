@@ -69,6 +69,10 @@ class StreamStorage {
     return this.initPromise;
   }
 
+  isInitialized(): boolean {
+    return this.initialized;
+  }
+
   private async _doInitialize(): Promise<void> {
     try {
       const [streamsJson, settingsJson, wasInitialized] = await Promise.all([
@@ -356,13 +360,20 @@ export const streamStorage = new StreamStorage();
 // React Hook
 // ============================================================================
 export function useStreamConfig() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [streams, setStreams] = useState<StreamConfig[]>([]);
-  const [settings, setSettings] = useState<StreamSettings>({
-    defaultStreamId: null,
-    multiViewStreamIds: [],
-    maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
-    themeMode: 'system',
+  // Performance optimization: Lazy state initialization checks if streamStorage is already initialized.
+  // This synchronous checkout prevents redundant 'render -> useEffect -> update -> re-render' cycles
+  // when navigating or remounting components, which is a major win during high-frequency usage.
+  const [isLoading, setIsLoading] = useState(() => !streamStorage.isInitialized());
+  const [streams, setStreams] = useState<StreamConfig[]>(() => {
+    return streamStorage.isInitialized() ? streamStorage.getAllStreams() : [];
+  });
+  const [settings, setSettings] = useState<StreamSettings>(() => {
+    return streamStorage.isInitialized() ? streamStorage.getSettings() : {
+      defaultStreamId: null,
+      multiViewStreamIds: [],
+      maxMultiViewStreams: MAX_MULTI_VIEW_STREAMS,
+      themeMode: 'system',
+    };
   });
 
   // Initialize and load data
@@ -370,6 +381,9 @@ export function useStreamConfig() {
     let mounted = true;
 
     const init = async () => {
+      if (streamStorage.isInitialized()) {
+        return;
+      }
       await streamStorage.initialize();
       if (mounted) {
         setStreams(streamStorage.getAllStreams());
@@ -565,12 +579,19 @@ export function useStreamConfig() {
  * favorite, or usage update, completely isolating them from frequent changes.
  */
 export function useThemeMode() {
-  const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
+  // Performance optimization: Lazily read themeMode synchronously if storage is initialized
+  // to avoid flash of dark/light theme, layout shifts, or redundant re-render steps on mount.
+  const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>(() => {
+    return streamStorage.isInitialized() ? streamStorage.getSettings().themeMode : 'system';
+  });
 
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
+      if (streamStorage.isInitialized()) {
+        return;
+      }
       await streamStorage.initialize();
       if (mounted) {
         setThemeMode(streamStorage.getSettings().themeMode);
