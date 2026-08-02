@@ -111,3 +111,9 @@
 **Learning:** During active stream playback, the log stream updates rapidly. If the user enters a filter query, the filtering logic runs on every log update. Performing `.toLowerCase()` inside the O(N) filtering loop on every single render creates hundreds of temporary string allocations, generating high garbage collection pressure on the JavaScript thread. Additionally, dynamic `.toUpperCase()` formatting inside list items allocates strings unnecessarily on every render cycle.
 
 **Action:** Pre-calculate case-insensitive properties (like `messageLower`) exactly once when a log item is created. For finite string values (like log levels), replace dynamic string conversions with static O(1) constant-time lookup maps (like `UPPERCASE_LEVELS`) to completely eliminate heap allocation overhead in hot list rendering paths.
+
+## 2026-07-28 - Optimizing layout re-renders during browser window resizing
+
+**Learning:** When using hooks like useWindowDimensions(), any raw pixel change (common during window resizing on Web) triggers a re-render of the hook and all consuming components on every single pixel of change. This causes huge layouts to continuously re-render, creating noticeable lag and CPU/JS thread overhead. Since layout decisions and breakpoint calculations only require rounded/integer precision, continuous high-frequency state updates are completely redundant.
+
+**Action:** Replace raw useWindowDimensions() with a custom Dimensions change listener. Round the width and height values, and perform a state update bail-out if the rounded values have not changed. This avoids scheduling redundant react render microtasks during active dragging/resizing.
