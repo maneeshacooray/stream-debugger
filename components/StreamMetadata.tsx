@@ -44,6 +44,7 @@ interface ParsedPlaylist {
 
 interface VariantStream {
   bandwidth: number;
+  bandwidthFormatted: string; // Pre-calculated formatted bitrate
   resolution?: string;
   codecs?: string;
   frameRate?: number;
@@ -52,6 +53,7 @@ interface VariantStream {
 
 interface Segment {
   duration: number;
+  durationFormatted: string; // Pre-calculated formatted segment duration
   uri: string;
   title?: string;
   discontinuity?: boolean;
@@ -65,7 +67,6 @@ const BANDWIDTH_REGEX = /BANDWIDTH=(\d+)/;
 const RESOLUTION_REGEX = /RESOLUTION=([^\s,]+)/;
 const CODECS_REGEX = /CODECS="([^"]+)"/;
 const FRAME_RATE_REGEX = /FRAME-RATE=([\d.]+)/;
-const EXTINF_REGEX = /#EXTINF:([\d.]+)(?:,(.*))?/;
 
 // ============================================================================
 // Helper Functions
@@ -130,27 +131,27 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
 
     // Version
     if (line.startsWith('#EXT-X-VERSION:')) {
-      result.version = parseInt(line.split(':')[1], 10);
+      result.version = parseInt(line.substring(15), 10);
     }
 
     // Target duration
     if (line.startsWith('#EXT-X-TARGETDURATION:')) {
-      result.targetDuration = parseInt(line.split(':')[1], 10);
+      result.targetDuration = parseInt(line.substring(22), 10);
     }
 
     // Media sequence
     if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
-      result.mediaSequence = parseInt(line.split(':')[1], 10);
+      result.mediaSequence = parseInt(line.substring(22), 10);
     }
 
     // Discontinuity sequence
     if (line.startsWith('#EXT-X-DISCONTINUITY-SEQUENCE:')) {
-      result.discontinuitySequence = parseInt(line.split(':')[1], 10);
+      result.discontinuitySequence = parseInt(line.substring(30), 10);
     }
 
     // Playlist type
     if (line.startsWith('#EXT-X-PLAYLIST-TYPE:')) {
-      result.playlistType = line.split(':')[1];
+      result.playlistType = line.substring(21);
       if (result.playlistType === 'VOD') {
         result.isLive = false;
       }
@@ -195,11 +196,24 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
     // Segment info (media playlist)
     if (line.startsWith('#EXTINF:')) {
       result.type = 'media';
-      const match = line.match(EXTINF_REGEX);
-      if (match) {
-        currentSegmentDuration = parseFloat(match[1]);
-        currentSegmentTitle = match[2] || undefined;
+      /**
+       * Performance optimization: Manual index-based parsing is used instead of
+       * regular expressions or .split() to parse the duration and title.
+       * This completely eliminates regular expression overhead and GC pressure.
+       */
+      const durationPart = line.substring(8);
+      const commaIndex = durationPart.indexOf(',');
+      if (commaIndex !== -1) {
+        currentSegmentDuration = parseFloat(durationPart.substring(0, commaIndex));
+        currentSegmentTitle = durationPart.substring(commaIndex + 1) || undefined;
+      } else {
+        currentSegmentDuration = parseFloat(durationPart);
+        currentSegmentTitle = undefined;
+      }
+      if (!isNaN(currentSegmentDuration)) {
         totalDuration += currentSegmentDuration;
+      } else {
+        currentSegmentDuration = null;
       }
     }
 
@@ -217,6 +231,8 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
     if (!line.startsWith('#')) {
       if (currentVariant) {
         currentVariant.uri = line;
+        // Pre-calculate bandwidthFormatted once during parsing to avoid dynamic formatting on render
+        currentVariant.bandwidthFormatted = formatBitrate(currentVariant.bandwidth || 0);
         result.variants.push(currentVariant as VariantStream);
         currentVariant = null;
       } else if (currentSegmentDuration !== null) {
@@ -227,6 +243,8 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
         if (result.segments.length < 20) {
           result.segments.push({
             duration: currentSegmentDuration,
+            // Pre-calculate durationFormatted once during parsing to avoid dynamic formatting on render
+            durationFormatted: currentSegmentDuration.toFixed(3) + 's',
             uri: line,
             title: currentSegmentTitle,
             discontinuity: hasDiscontinuity,
@@ -270,7 +288,7 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
             {variant.resolution || 'Audio Only'}
           </Text>
           <Text style={styles.variantBitrate}>
-            {formatBitrate(variant.bandwidth)}
+            {variant.bandwidthFormatted}
           </Text>
         </View>
         {variant.codecs && (
@@ -287,14 +305,14 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
   }, [playlist, styles]);
 
   // Performance optimization: Memoize the rendered segments list to avoid
-  // redundant array iterations and calling segment.duration.toFixed(3) on every render.
+  // redundant array iterations and dynamic duration string formatting/allocation on every render.
   const renderedSegments = useMemo(() => {
     if (!playlist || playlist.segments.length === 0) return null;
     return playlist.segments.map((segment, idx) => (
       <View key={idx} style={styles.segmentItem}>
         <Text style={styles.segmentIndex}>#{idx + 1}</Text>
         <Text style={styles.segmentDuration}>
-          {segment.duration.toFixed(3)}s
+          {segment.durationFormatted}
         </Text>
         <Text style={styles.segmentUri} numberOfLines={1}>
           {segment.uri}
