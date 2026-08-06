@@ -65,7 +65,6 @@ const BANDWIDTH_REGEX = /BANDWIDTH=(\d+)/;
 const RESOLUTION_REGEX = /RESOLUTION=([^\s,]+)/;
 const CODECS_REGEX = /CODECS="([^"]+)"/;
 const FRAME_RATE_REGEX = /FRAME-RATE=([\d.]+)/;
-const EXTINF_REGEX = /#EXTINF:([\d.]+)(?:,(.*))?/;
 
 // ============================================================================
 // Helper Functions
@@ -130,27 +129,32 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
 
     // Version
     if (line.startsWith('#EXT-X-VERSION:')) {
-      result.version = parseInt(line.split(':')[1], 10);
+      /**
+       * Performance optimization: Replace expensive split(':') with substring()
+       * using the pre-calculated length of the prefix to completely avoid
+       * array allocations and dynamic split parsing.
+       */
+      result.version = parseInt(line.substring(15), 10);
     }
 
     // Target duration
     if (line.startsWith('#EXT-X-TARGETDURATION:')) {
-      result.targetDuration = parseInt(line.split(':')[1], 10);
+      result.targetDuration = parseInt(line.substring(22), 10);
     }
 
     // Media sequence
     if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
-      result.mediaSequence = parseInt(line.split(':')[1], 10);
+      result.mediaSequence = parseInt(line.substring(22), 10);
     }
 
     // Discontinuity sequence
     if (line.startsWith('#EXT-X-DISCONTINUITY-SEQUENCE:')) {
-      result.discontinuitySequence = parseInt(line.split(':')[1], 10);
+      result.discontinuitySequence = parseInt(line.substring(30), 10);
     }
 
     // Playlist type
     if (line.startsWith('#EXT-X-PLAYLIST-TYPE:')) {
-      result.playlistType = line.split(':')[1];
+      result.playlistType = line.substring(21);
       if (result.playlistType === 'VOD') {
         result.isLive = false;
       }
@@ -194,12 +198,27 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
 
     // Segment info (media playlist)
     if (line.startsWith('#EXTINF:')) {
+      /**
+       * Performance optimization: Replace expensive regular expression matching
+       * with manual index parsing using substring() and indexOf(). This completely
+       * eliminates regex engine execution overhead, match group arrays, and
+       * dynamic heap allocations, achieving O(1) garbage collection pressure.
+       */
       result.type = 'media';
-      const match = line.match(EXTINF_REGEX);
-      if (match) {
-        currentSegmentDuration = parseFloat(match[1]);
-        currentSegmentTitle = match[2] || undefined;
+      const value = line.substring(8);
+      const commaIdx = value.indexOf(',');
+      let durationStr = value;
+      if (commaIdx !== -1) {
+        durationStr = value.substring(0, commaIdx);
+        currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
+      } else {
+        currentSegmentTitle = undefined;
+      }
+      currentSegmentDuration = parseFloat(durationStr);
+      if (!isNaN(currentSegmentDuration)) {
         totalDuration += currentSegmentDuration;
+      } else {
+        currentSegmentDuration = null;
       }
     }
 
