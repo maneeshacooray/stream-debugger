@@ -48,6 +48,7 @@ interface VariantStream {
   codecs?: string;
   frameRate?: number;
   uri: string;
+  formattedBitrate?: string;
 }
 
 interface Segment {
@@ -56,6 +57,7 @@ interface Segment {
   title?: string;
   discontinuity?: boolean;
   programDateTime?: string;
+  formattedDuration?: string;
 }
 
 // ============================================================================
@@ -236,6 +238,9 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
     if (!line.startsWith('#')) {
       if (currentVariant) {
         currentVariant.uri = line;
+        if (currentVariant.bandwidth !== undefined) {
+          currentVariant.formattedBitrate = formatBitrate(currentVariant.bandwidth);
+        }
         result.variants.push(currentVariant as VariantStream);
         currentVariant = null;
       } else if (currentSegmentDuration !== null) {
@@ -249,6 +254,7 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
             uri: line,
             title: currentSegmentTitle,
             discontinuity: hasDiscontinuity,
+            formattedDuration: `${currentSegmentDuration.toFixed(3)}s`,
           });
         }
         currentSegmentDuration = null;
@@ -280,6 +286,8 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
 
   // Performance optimization: Memoize the rendered variants list to prevent
   // recreating JSX elements during toggling of raw/parsed views or parent updates.
+  // Additionally, uses pre-calculated, cached formatted display strings (like formattedBitrate)
+  // to completely eliminate dynamic layout formatting and string generation overhead inside map callbacks.
   const renderedVariants = useMemo(() => {
     if (!playlist || playlist.variants.length === 0) return null;
     return playlist.variants.map((variant, idx) => (
@@ -289,7 +297,7 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
             {variant.resolution || 'Audio Only'}
           </Text>
           <Text style={styles.variantBitrate}>
-            {formatBitrate(variant.bandwidth)}
+            {variant.formattedBitrate || '--'}
           </Text>
         </View>
         {variant.codecs && (
@@ -306,14 +314,16 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
   }, [playlist, styles]);
 
   // Performance optimization: Memoize the rendered segments list to avoid
-  // redundant array iterations and calling segment.duration.toFixed(3) on every render.
+  // redundant array iterations and uses pre-calculated, cached formatted duration
+  // strings (formattedDuration) on segment items to completely eliminate calling
+  // segment.duration.toFixed(3) on every render / memo recalculation.
   const renderedSegments = useMemo(() => {
     if (!playlist || playlist.segments.length === 0) return null;
     return playlist.segments.map((segment, idx) => (
       <View key={idx} style={styles.segmentItem}>
         <Text style={styles.segmentIndex}>#{idx + 1}</Text>
         <Text style={styles.segmentDuration}>
-          {segment.duration.toFixed(3)}s
+          {segment.formattedDuration || '--'}
         </Text>
         <Text style={styles.segmentUri} numberOfLines={1}>
           {segment.uri}
