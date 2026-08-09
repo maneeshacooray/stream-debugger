@@ -129,113 +129,111 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
       continue;
     }
 
-    // Version
-    if (line.startsWith('#EXT-X-VERSION:')) {
-      /**
-       * Performance optimization: Replace expensive split(':') with substring()
-       * using the pre-calculated length of the prefix to completely avoid
-       * array allocations and dynamic split parsing.
-       */
-      result.version = parseInt(line.substring(15), 10);
-    }
-
-    // Target duration
-    if (line.startsWith('#EXT-X-TARGETDURATION:')) {
-      result.targetDuration = parseInt(line.substring(22), 10);
-    }
-
-    // Media sequence
-    if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
-      result.mediaSequence = parseInt(line.substring(22), 10);
-    }
-
-    // Discontinuity sequence
-    if (line.startsWith('#EXT-X-DISCONTINUITY-SEQUENCE:')) {
-      result.discontinuitySequence = parseInt(line.substring(30), 10);
-    }
-
-    // Playlist type
-    if (line.startsWith('#EXT-X-PLAYLIST-TYPE:')) {
-      result.playlistType = line.substring(21);
-      if (result.playlistType === 'VOD') {
+    /**
+     * Performance optimization: Process lines in a highly efficient hierarchical manner.
+     * By splitting into two distinct paths: tag lines (starting with '#') vs URI/content lines (the rest),
+     * we completely eliminate the overhead of executing up to 10 prefix matching checks (line.startsWith)
+     * on every URI line. This significantly reduces CPU cycle waste in large VOD manifests containing
+     * thousands of segment URIs.
+     */
+    if (line.startsWith('#')) {
+      // Version
+      if (line.startsWith('#EXT-X-VERSION:')) {
+        /**
+         * Performance optimization: Replace expensive split(':') with substring()
+         * using the pre-calculated length of the prefix to completely avoid
+         * array allocations and dynamic split parsing.
+         */
+        result.version = parseInt(line.substring(15), 10);
+      }
+      // Target duration
+      else if (line.startsWith('#EXT-X-TARGETDURATION:')) {
+        result.targetDuration = parseInt(line.substring(22), 10);
+      }
+      // Media sequence
+      else if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
+        result.mediaSequence = parseInt(line.substring(22), 10);
+      }
+      // Discontinuity sequence
+      else if (line.startsWith('#EXT-X-DISCONTINUITY-SEQUENCE:')) {
+        result.discontinuitySequence = parseInt(line.substring(30), 10);
+      }
+      // Playlist type
+      else if (line.startsWith('#EXT-X-PLAYLIST-TYPE:')) {
+        result.playlistType = line.substring(21);
+        if (result.playlistType === 'VOD') {
+          result.isLive = false;
+        }
+      }
+      // End list (VOD indicator)
+      else if (line === '#EXT-X-ENDLIST') {
         result.isLive = false;
       }
-    }
+      // Stream info (master playlist)
+      else if (line.startsWith('#EXT-X-STREAM-INF:')) {
+        result.type = 'master';
+        const attrs = line.substring(18);
+        currentVariant = {};
 
-    // End list (VOD indicator)
-    if (line === '#EXT-X-ENDLIST') {
-      result.isLive = false;
-    }
+        // Parse bandwidth
+        const bwMatch = attrs.match(BANDWIDTH_REGEX);
+        if (bwMatch) {
+          currentVariant.bandwidth = parseInt(bwMatch[1], 10);
+        }
 
-    // Stream info (master playlist)
-    if (line.startsWith('#EXT-X-STREAM-INF:')) {
-      result.type = 'master';
-      const attrs = line.substring(18);
-      currentVariant = {};
+        // Parse resolution
+        const resMatch = attrs.match(RESOLUTION_REGEX);
+        if (resMatch) {
+          currentVariant.resolution = resMatch[1];
+        }
 
-      // Parse bandwidth
-      const bwMatch = attrs.match(BANDWIDTH_REGEX);
-      if (bwMatch) {
-        currentVariant.bandwidth = parseInt(bwMatch[1], 10);
+        // Parse codecs
+        const codecMatch = attrs.match(CODECS_REGEX);
+        if (codecMatch) {
+          currentVariant.codecs = codecMatch[1];
+        }
+
+        // Parse frame rate
+        const frMatch = attrs.match(FRAME_RATE_REGEX);
+        if (frMatch) {
+          currentVariant.frameRate = parseFloat(frMatch[1]);
+        }
       }
-
-      // Parse resolution
-      const resMatch = attrs.match(RESOLUTION_REGEX);
-      if (resMatch) {
-        currentVariant.resolution = resMatch[1];
+      // Segment info (media playlist)
+      else if (line.startsWith('#EXTINF:')) {
+        /**
+         * Performance optimization: Replace expensive regular expression matching
+         * with manual index parsing using substring() and indexOf(). This completely
+         * eliminates regex engine execution overhead, match group arrays, and
+         * dynamic heap allocations, achieving O(1) garbage collection pressure.
+         */
+        result.type = 'media';
+        const value = line.substring(8);
+        const commaIdx = value.indexOf(',');
+        let durationStr = value;
+        if (commaIdx !== -1) {
+          durationStr = value.substring(0, commaIdx);
+          currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
+        } else {
+          currentSegmentTitle = undefined;
+        }
+        currentSegmentDuration = parseFloat(durationStr);
+        if (!isNaN(currentSegmentDuration)) {
+          totalDuration += currentSegmentDuration;
+        } else {
+          currentSegmentDuration = null;
+        }
       }
-
-      // Parse codecs
-      const codecMatch = attrs.match(CODECS_REGEX);
-      if (codecMatch) {
-        currentVariant.codecs = codecMatch[1];
+      // Discontinuity marker
+      else if (line === '#EXT-X-DISCONTINUITY') {
+        hasDiscontinuity = true;
       }
-
-      // Parse frame rate
-      const frMatch = attrs.match(FRAME_RATE_REGEX);
-      if (frMatch) {
-        currentVariant.frameRate = parseFloat(frMatch[1]);
+      // Program date time
+      else if (line.startsWith('#EXT-X-PROGRAM-DATE-TIME:')) {
+        // Could store this if needed
       }
-    }
-
-    // Segment info (media playlist)
-    if (line.startsWith('#EXTINF:')) {
-      /**
-       * Performance optimization: Replace expensive regular expression matching
-       * with manual index parsing using substring() and indexOf(). This completely
-       * eliminates regex engine execution overhead, match group arrays, and
-       * dynamic heap allocations, achieving O(1) garbage collection pressure.
-       */
-      result.type = 'media';
-      const value = line.substring(8);
-      const commaIdx = value.indexOf(',');
-      let durationStr = value;
-      if (commaIdx !== -1) {
-        durationStr = value.substring(0, commaIdx);
-        currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
-      } else {
-        currentSegmentTitle = undefined;
-      }
-      currentSegmentDuration = parseFloat(durationStr);
-      if (!isNaN(currentSegmentDuration)) {
-        totalDuration += currentSegmentDuration;
-      } else {
-        currentSegmentDuration = null;
-      }
-    }
-
-    // Discontinuity marker
-    if (line === '#EXT-X-DISCONTINUITY') {
-      hasDiscontinuity = true;
-    }
-
-    // Program date time
-    if (line.startsWith('#EXT-X-PROGRAM-DATE-TIME:')) {
-      // Could store this if needed
-    }
-
-    // URI lines (not starting with #)
-    if (!line.startsWith('#')) {
+    } else {
+      // Content / URI lines
       if (currentVariant) {
         currentVariant.uri = line;
         if (currentVariant.bandwidth !== undefined) {
