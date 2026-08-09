@@ -109,15 +109,42 @@ const logManager = new LogManager();
 // ============================================================================
 // Helpers
 // ============================================================================
+// Cache for formatTime to prevent redundant allocations and padding overhead
+// during frequent 500ms (or faster) time updates. Bounded to prevent memory leaks.
+const formatTimeCache = new Map<number, string>();
+const MAX_TIME_CACHE_SIZE = 600; // Caches up to 10 minutes of playback values
+
 const formatTime = (seconds: number): string => {
   if (!isFinite(seconds) || seconds < 0) return '0:00';
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
+
+  // Rounding to seconds allows caching values, which dramatically reduces padStart,
+  // toString, and template literal allocations on frequent currentTime updates.
+  const rounded = Math.floor(seconds);
+
+  const cached = formatTimeCache.get(rounded);
+  if (cached !== undefined) return cached;
+
+  const hrs = Math.floor(rounded / 3600);
+  const mins = Math.floor((rounded % 3600) / 60);
+  const secs = rounded % 60;
+
+  let formatted: string;
   if (hrs > 0) {
-    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const minsStr = mins < 10 ? '0' + mins : mins;
+    const secsStr = secs < 10 ? '0' + secs : secs;
+    formatted = `${hrs}:${minsStr}:${secsStr}`;
+  } else {
+    const secsStr = secs < 10 ? '0' + secs : secs;
+    formatted = `${mins}:${secsStr}`;
   }
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+
+  // Bounded cache maintenance to prevent any memory leak
+  if (formatTimeCache.size >= MAX_TIME_CACHE_SIZE) {
+    formatTimeCache.clear();
+  }
+  formatTimeCache.set(rounded, formatted);
+
+  return formatted;
 };
 
 const parseCodecName = (mimeType: string | null, theme: Theme): { name: string; fullName: string; color: string } => {
