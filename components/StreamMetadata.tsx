@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { fetchHLSManifest } from '../config/streams';
 import { Theme } from '../constants/appTheme';
 
 // ============================================================================
@@ -355,17 +356,16 @@ function StreamMetadataComponent({ streamUrl, theme, standalone }: StreamMetadat
     lastFetchedUrl.current = url;
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          'Accept': '*/*',
-        },
-      });
+      // Performance optimization: Uses the shared, deduplicated fetchHLSManifest helper
+      // to avoid making a duplicate simultaneous network request when the index.tsx HTTP logger
+      // is also fetching this manifest on load.
+      const sharedRes = await fetchHLSManifest(url, force);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (!sharedRes.ok) {
+        throw new Error(`HTTP ${sharedRes.status}`);
       }
 
-      const content = await response.text();
+      const content = sharedRes.text;
       const parsed = parseHLSPlaylist(content, url);
 
       // Update cache (with simple size limit to prevent memory leaks)
