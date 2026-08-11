@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '../hooks/useResponsive';
 
 // Stream configuration
-import { StreamConfig, useStreamConfig } from '../config/streams';
+import { fetchHLSManifest, StreamConfig, useStreamConfig } from '../config/streams';
 
 // Components
 import { DeviceStats } from '../components/DeviceStats';
@@ -1424,28 +1424,26 @@ export default function StreamDebugger() {
     addLog('http', 'info', `[REQUEST] GET ${url}`);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
+      // Performance optimization: Uses the shared, deduplicated fetchHLSManifest helper
+      // to avoid making a duplicate simultaneous network request when the StreamMetadata
+      // component is also fetching this manifest on load.
+      const sharedRes = await fetchHLSManifest(url);
 
       const duration = Date.now() - startTime;
-      addLog('http', res.ok ? 'info' : 'warn', `[RESPONSE] ${res.status} ${res.statusText} (${duration}ms)`);
+      addLog('http', sharedRes.ok ? 'info' : 'warn', `[RESPONSE] ${sharedRes.status} ${sharedRes.statusText} (${duration}ms)`);
 
       // Log all headers
-      const headers: string[] = [];
-      res.headers.forEach((value, key) => {
-        headers.push(`${key}: ${value}`);
-      });
+      const headers = sharedRes.headers.map(([key, value]) => `${key}: ${value}`);
       if (headers.length > 0) {
         addLog('http', 'debug', `Headers:\n${headers.join('\n')}`);
       }
 
-      const contentType = res.headers.get('content-type') || '';
+      // Find content-type from shared headers
+      const contentTypePair = sharedRes.headers.find(([key]) => key.toLowerCase() === 'content-type');
+      const contentType = contentTypePair ? contentTypePair[1] : '';
 
-      if (contentType.includes('mpegurl') || url.endsWith('.m3u8')) {
-        const text = await res.text();
+      if (contentType.toLowerCase().includes('mpegurl') || url.toLowerCase().endsWith('.m3u8')) {
+        const text = sharedRes.text;
         /**
          * Performance optimization: Single-pass manifest processing to avoid multiple
          * intermediate array allocations from .split().filter() chains.

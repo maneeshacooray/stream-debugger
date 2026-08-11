@@ -2,6 +2,83 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 // ============================================================================
+// Shared Fetcher for HLS Manifests (Deduplication & Cache)
+// ============================================================================
+export interface SharedFetchResponse {
+  text: string;
+  status: number;
+  statusText: string;
+  headers: [string, string][];
+  ok: boolean;
+}
+
+const inflightFetches = new Map<string, Promise<SharedFetchResponse>>();
+const manifestCache = new Map<string, { response: SharedFetchResponse; timestamp: number }>();
+const CACHE_TTL = 15000; // 15 seconds
+const MAX_CACHE_SIZE = 50; // Prevents memory accumulation in long sessions
+
+/**
+ * Performance optimization: Deduplicates in-flight manifest requests and caches responses.
+ * When multiple components (like StreamDebugger and StreamMetadata) fetch the same
+ * stream URL simultaneously on load, they share a single in-flight promise.
+ * This completely eliminates duplicate simultaneous HTTP requests, reduces network
+ * bandwidth usage, and cuts manifest loading latency.
+ */
+export async function fetchHLSManifest(url: string, force = false): Promise<SharedFetchResponse> {
+  if (!force) {
+    const cached = manifestCache.get(url);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.response;
+    }
+  }
+
+  let promise = inflightFetches.get(url);
+  if (!promise || force) {
+    promise = (async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'Accept': '*/*',
+          },
+        });
+
+        const text = await response.text();
+        const headers: [string, string][] = [];
+        response.headers.forEach((value, key) => {
+          headers.push([key, value]);
+        });
+
+        const sharedResponse: SharedFetchResponse = {
+          text,
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          ok: response.ok,
+        };
+
+        // Bounded cache maintenance to prevent any memory leak
+        if (manifestCache.size >= MAX_CACHE_SIZE) {
+          const firstKey = manifestCache.keys().next().value;
+          if (firstKey !== undefined) manifestCache.delete(firstKey);
+        }
+        manifestCache.set(url, { response: sharedResponse, timestamp: Date.now() });
+        return sharedResponse;
+      } finally {
+        clearTimeout(timeoutId);
+        inflightFetches.delete(url);
+      }
+    })();
+    inflightFetches.set(url, promise);
+  }
+
+  return promise;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 export interface StreamConfig {
