@@ -138,66 +138,82 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
      * thousands of segment URIs.
      */
     if (line.startsWith('#')) {
-      // Version
-      if (line.startsWith('#EXT-X-VERSION:')) {
-        /**
-         * Performance optimization: Replace expensive split(':') with substring()
-         * using the pre-calculated length of the prefix to completely avoid
-         * array allocations and dynamic split parsing.
-         */
-        result.version = parseInt(line.substring(15), 10);
-      }
-      // Target duration
-      else if (line.startsWith('#EXT-X-TARGETDURATION:')) {
-        result.targetDuration = parseInt(line.substring(22), 10);
-      }
-      // Media sequence
-      else if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
-        result.mediaSequence = parseInt(line.substring(22), 10);
-      }
-      // Discontinuity sequence
-      else if (line.startsWith('#EXT-X-DISCONTINUITY-SEQUENCE:')) {
-        result.discontinuitySequence = parseInt(line.substring(30), 10);
-      }
-      // Playlist type
-      else if (line.startsWith('#EXT-X-PLAYLIST-TYPE:')) {
-        result.playlistType = line.substring(21);
-        if (result.playlistType === 'VOD') {
+      /**
+       * Performance optimization: Group common prefixes (specifically '#EXT-X-')
+       * under a single parent conditional block rather than evaluating multiple
+       * separate 'startsWith' operations for each tag type on every non-matching line.
+       * This drastically cuts CPU cycles and avoids redundant evaluations.
+       */
+      if (line.startsWith('#EXT-X-')) {
+        // Version
+        if (line.startsWith('#EXT-X-VERSION:')) {
+          /**
+           * Performance optimization: Replace expensive split(':') with substring()
+           * using the pre-calculated length of the prefix to completely avoid
+           * array allocations and dynamic split parsing.
+           */
+          result.version = parseInt(line.substring(15), 10);
+        }
+        // Target duration
+        else if (line.startsWith('#EXT-X-TARGETDURATION:')) {
+          result.targetDuration = parseInt(line.substring(22), 10);
+        }
+        // Media sequence
+        else if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
+          result.mediaSequence = parseInt(line.substring(22), 10);
+        }
+        // Discontinuity sequence
+        else if (line.startsWith('#EXT-X-DISCONTINUITY-SEQUENCE:')) {
+          result.discontinuitySequence = parseInt(line.substring(30), 10);
+        }
+        // Playlist type
+        else if (line.startsWith('#EXT-X-PLAYLIST-TYPE:')) {
+          result.playlistType = line.substring(21);
+          if (result.playlistType === 'VOD') {
+            result.isLive = false;
+          }
+        }
+        // End list (VOD indicator)
+        else if (line === '#EXT-X-ENDLIST') {
           result.isLive = false;
         }
-      }
-      // End list (VOD indicator)
-      else if (line === '#EXT-X-ENDLIST') {
-        result.isLive = false;
-      }
-      // Stream info (master playlist)
-      else if (line.startsWith('#EXT-X-STREAM-INF:')) {
-        result.type = 'master';
-        const attrs = line.substring(18);
-        currentVariant = {};
+        // Stream info (master playlist)
+        else if (line.startsWith('#EXT-X-STREAM-INF:')) {
+          result.type = 'master';
+          const attrs = line.substring(18);
+          currentVariant = {};
 
-        // Parse bandwidth
-        const bwMatch = attrs.match(BANDWIDTH_REGEX);
-        if (bwMatch) {
-          currentVariant.bandwidth = parseInt(bwMatch[1], 10);
+          // Parse bandwidth
+          const bwMatch = attrs.match(BANDWIDTH_REGEX);
+          if (bwMatch) {
+            currentVariant.bandwidth = parseInt(bwMatch[1], 10);
+          }
+
+          // Parse resolution
+          const resMatch = attrs.match(RESOLUTION_REGEX);
+          if (resMatch) {
+            currentVariant.resolution = resMatch[1];
+          }
+
+          // Parse codecs
+          const codecMatch = attrs.match(CODECS_REGEX);
+          if (codecMatch) {
+            currentVariant.codecs = codecMatch[1];
+          }
+
+          // Parse frame rate
+          const frMatch = attrs.match(FRAME_RATE_REGEX);
+          if (frMatch) {
+            currentVariant.frameRate = parseFloat(frMatch[1]);
+          }
         }
-
-        // Parse resolution
-        const resMatch = attrs.match(RESOLUTION_REGEX);
-        if (resMatch) {
-          currentVariant.resolution = resMatch[1];
+        // Discontinuity marker
+        else if (line === '#EXT-X-DISCONTINUITY') {
+          hasDiscontinuity = true;
         }
-
-        // Parse codecs
-        const codecMatch = attrs.match(CODECS_REGEX);
-        if (codecMatch) {
-          currentVariant.codecs = codecMatch[1];
-        }
-
-        // Parse frame rate
-        const frMatch = attrs.match(FRAME_RATE_REGEX);
-        if (frMatch) {
-          currentVariant.frameRate = parseFloat(frMatch[1]);
+        // Program date time
+        else if (line.startsWith('#EXT-X-PROGRAM-DATE-TIME:')) {
+          // Could store this if needed
         }
       }
       // Segment info (media playlist)
@@ -224,14 +240,6 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
         } else {
           currentSegmentDuration = null;
         }
-      }
-      // Discontinuity marker
-      else if (line === '#EXT-X-DISCONTINUITY') {
-        hasDiscontinuity = true;
-      }
-      // Program date time
-      else if (line.startsWith('#EXT-X-PROGRAM-DATE-TIME:')) {
-        // Could store this if needed
       }
     } else {
       // Content / URI lines
