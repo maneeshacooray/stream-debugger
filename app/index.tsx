@@ -109,6 +109,9 @@ const logManager = new LogManager();
 // ============================================================================
 // Helpers
 // ============================================================================
+const pad2 = (n: number): string => (n < 10 ? '0' + n : '' + n);
+const pad3 = (n: number): string => (n < 10 ? '00' + n : n < 100 ? '0' + n : '' + n);
+
 // Cache for formatTime to prevent redundant allocations and padding overhead
 // during frequent 500ms (or faster) time updates. Bounded to prevent memory leaks.
 const formatTimeCache = new Map<number, string>();
@@ -1392,14 +1395,14 @@ export default function StreamDebugger() {
     const now = new Date();
 
     /**
-     * Performance optimization: Manual time formatting is significantly faster than
-     * toLocaleTimeString, which is expensive due to locale-aware processing.
+     * Performance optimization: Fast manual time formatting with pad2/pad3 integer
+     * helpers avoids dynamic .toString() and .padStart() function call overhead.
      * This is critical during high-frequency logging.
      */
-    const h = now.getHours().toString().padStart(2, '0');
-    const m = now.getMinutes().toString().padStart(2, '0');
-    const s = now.getSeconds().toString().padStart(2, '0');
-    const ms = now.getMilliseconds().toString().padStart(3, '0');
+    const h = pad2(now.getHours());
+    const m = pad2(now.getMinutes());
+    const s = pad2(now.getSeconds());
+    const ms = pad3(now.getMilliseconds());
     const timeString = `${h}:${m}:${s}.${ms}`;
 
     const entry: LogEntry = {
