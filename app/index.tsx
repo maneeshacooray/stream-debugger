@@ -75,7 +75,12 @@ class LogManager {
 
   addLog(log: LogEntry): void {
     if (this.logs.length >= MAX_LOGS) {
-      this.logs = this.logs.slice(1);
+      /**
+       * Performance optimization: Mutate array in-place with shift() instead
+       * of slice(1), avoiding allocation and copying of up to 499 elements
+       * on every log entry once MAX_LOGS capacity is reached.
+       */
+      this.logs.shift();
     }
     this.logs.push(log);
     this.notify();
