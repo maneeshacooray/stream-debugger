@@ -68,6 +68,7 @@ interface LogEntry {
 class LogManager {
   private logs: LogEntry[] = [];
   private listeners: Set<() => void> = new Set();
+  private notifyScheduled = false;
 
   getLogs(): LogEntry[] {
     return this.logs;
@@ -99,13 +100,32 @@ class LogManager {
   }
 
   private notify(): void {
-    this.listeners.forEach(listener => {
-      try {
-        listener();
-      } catch (err) {
-        console.error('LogManager listener error:', err);
-      }
-    });
+    /**
+     * Performance optimization: Coalesce listener notifications into a single
+     * microtask execution pass using queueMicrotask (with Promise fallback).
+     * During rapid log bursts (such as batch manifest line logging or player events),
+     * this avoids triggering redundant synchronous subscriber state updates and
+     * React component re-renders on every individual log entry.
+     */
+    if (this.notifyScheduled) return;
+    this.notifyScheduled = true;
+
+    const dispatchNotifications = () => {
+      this.notifyScheduled = false;
+      this.listeners.forEach(listener => {
+        try {
+          listener();
+        } catch (err) {
+          console.error('LogManager listener error:', err);
+        }
+      });
+    };
+
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(dispatchNotifications);
+    } else {
+      Promise.resolve().then(dispatchNotifications);
+    }
   }
 }
 
