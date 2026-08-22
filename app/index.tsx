@@ -173,38 +173,61 @@ const formatTime = (seconds: number): string => {
   return formatted;
 };
 
+// Bounded cache for parseCodecName to eliminate dynamic string lowercasing,
+// repeated .includes() string searches, and object allocations on video track updates.
+const codecInfoCache = new Map<string, { name: string; fullName: string; color: string }>();
+
 const parseCodecName = (mimeType: string | null, theme: Theme): { name: string; fullName: string; color: string } => {
   if (!mimeType) return { name: '--', fullName: 'Unknown', color: theme.text.muted };
 
+  /**
+   * Performance optimization: Cache parsed codec metadata by mimeType string.
+   * This avoids dynamic .toLowerCase() string allocations, 10+ .includes() string search
+   * evaluations, and result object instantiations on codec parsing calls.
+   */
+  const cacheKey = `${mimeType}_${theme.isDark ? 'dark' : 'light'}`;
+  const cached = codecInfoCache.get(cacheKey);
+  if (cached) return cached;
+
   const mime = mimeType.toLowerCase();
+  let result: { name: string; fullName: string; color: string };
 
   // H.265 / HEVC
   if (mime.includes('hevc') || mime.includes('hvc1') || mime.includes('hev1') || mime.includes('h265') || mime.includes('x265')) {
-    return { name: 'H.265', fullName: 'HEVC (H.265)', color: theme.accent.success };
+    result = { name: 'H.265', fullName: 'HEVC (H.265)', color: theme.accent.success };
   }
   // H.264 / AVC
-  if (mime.includes('avc') || mime.includes('h264') || mime.includes('x264')) {
-    return { name: 'H.264', fullName: 'AVC (H.264)', color: theme.accent.info };
+  else if (mime.includes('avc') || mime.includes('h264') || mime.includes('x264')) {
+    result = { name: 'H.264', fullName: 'AVC (H.264)', color: theme.accent.info };
   }
   // VP9
-  if (mime.includes('vp9') || mime.includes('vp09')) {
-    return { name: 'VP9', fullName: 'VP9', color: theme.accent.warning };
+  else if (mime.includes('vp9') || mime.includes('vp09')) {
+    result = { name: 'VP9', fullName: 'VP9', color: theme.accent.warning };
   }
   // VP8
-  if (mime.includes('vp8')) {
-    return { name: 'VP8', fullName: 'VP8', color: theme.accent.warning };
+  else if (mime.includes('vp8')) {
+    result = { name: 'VP8', fullName: 'VP8', color: theme.accent.warning };
   }
   // AV1
-  if (mime.includes('av1') || mime.includes('av01')) {
-    return { name: 'AV1', fullName: 'AV1', color: '#ff6b9d' };
+  else if (mime.includes('av1') || mime.includes('av01')) {
+    result = { name: 'AV1', fullName: 'AV1', color: '#ff6b9d' };
   }
   // MPEG-4
-  if (mime.includes('mp4v') || mime.includes('mpeg4')) {
-    return { name: 'MPEG-4', fullName: 'MPEG-4 Part 2', color: theme.text.secondary };
+  else if (mime.includes('mp4v') || mime.includes('mpeg4')) {
+    result = { name: 'MPEG-4', fullName: 'MPEG-4 Part 2', color: theme.text.secondary };
+  }
+  else {
+    // Return the raw mime type if unknown
+    result = { name: mimeType.split('/').pop() || mimeType, fullName: mimeType, color: theme.text.secondary };
   }
 
-  // Return the raw mime type if unknown
-  return { name: mimeType.split('/').pop() || mimeType, fullName: mimeType, color: theme.text.secondary };
+  // Bound cache to prevent memory leaks in extreme sessions
+  if (codecInfoCache.size >= 100) {
+    codecInfoCache.clear();
+  }
+  codecInfoCache.set(cacheKey, result);
+
+  return result;
 };
 
 // ============================================================================
