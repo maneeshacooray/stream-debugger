@@ -476,8 +476,36 @@ export function useStreamConfig() {
     // of the hook, completely eliminating resubscription overhead.
     const unsubscribe = streamStorage.subscribe(() => {
       if (mounted) {
-        setStreams(streamStorage.getAllStreams());
-        setSettings(streamStorage.getSettings());
+        const nextStreams = streamStorage.getAllStreams();
+        const nextSettings = streamStorage.getSettings();
+
+        // Performance optimization: State update bail-out checks to avoid redundant re-renders.
+        // Prevent streams state update if streams array contents and references are unchanged
+        // (e.g. when only settings were modified).
+        setStreams(prev => {
+          if (
+            prev.length === nextStreams.length &&
+            prev.every((s, i) => s === nextStreams[i])
+          ) {
+            return prev;
+          }
+          return nextStreams;
+        });
+
+        // Prevent settings state update if settings properties are unchanged
+        // (e.g. when only stream usage or stream lists were modified).
+        setSettings(prev => {
+          if (
+            prev.defaultStreamId === nextSettings.defaultStreamId &&
+            prev.maxMultiViewStreams === nextSettings.maxMultiViewStreams &&
+            prev.themeMode === nextSettings.themeMode &&
+            prev.multiViewStreamIds.length === nextSettings.multiViewStreamIds.length &&
+            prev.multiViewStreamIds.every((id, i) => id === nextSettings.multiViewStreamIds[i])
+          ) {
+            return prev;
+          }
+          return nextSettings;
+        });
       }
     });
 
