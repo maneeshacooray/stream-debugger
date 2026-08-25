@@ -159,6 +159,13 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
   const targetBuffer = isLive ? TARGET_LIVE_BUFFER_SECONDS : TARGET_BUFFER_SECONDS;
   const bufferHealth = Math.min(1, Math.max(0, bufferAhead / targetBuffer));
 
+  /**
+   * Performance optimization: Calculate rounded integer percentage for width styling.
+   * Prevents creating dynamic floating-point percentage strings (e.g., "74.8392104%")
+   * on every render frame during playback time updates.
+   */
+  const bufferPercent = Math.round(bufferHealth * 100);
+
   // Calculate quality
   const quality = useMemo(() => {
     if (!isPlaying && bufferHealth < 0.1) return 'offline';
@@ -214,20 +221,45 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
   // Memoize formatted bitrate to avoid redundant string formatting every 500ms
   const formattedBitrate = useMemo(() => formatSpeed(bitrate), [bitrate]);
 
-  // Report stats to parent - only if callback is provided
+  /**
+   * Performance optimization: Maintain a reference to previously emitted stats.
+   * Compare metrics against previous values (rounding continuous floats to target precision)
+   * before calling onStatsUpdate to prevent redundant parent state updates and re-renders.
+   */
+  const prevStatsRef = useRef<NetworkStats | null>(null);
+
+  // Report stats to parent - only if callback is provided and metrics have meaningfully changed
   useEffect(() => {
     if (!onStatsUpdate) return;
+
+    const roundedLatency = latency !== null ? Math.round(latency * 1000) : null;
+    const roundedBufferHealth = Math.round(bufferHealth * 100) / 100;
+
+    const prev = prevStatsRef.current;
+    if (
+      prev &&
+      prev.quality === quality &&
+      prev.downloadSpeed === bitrate &&
+      prev.latency === roundedLatency &&
+      prev.bufferHealth === roundedBufferHealth &&
+      prev.stallCount === stallCount &&
+      prev.lastStallDuration === lastStallDuration
+    ) {
+      return;
+    }
 
     const stats: NetworkStats = {
       quality,
       downloadSpeed: bitrate,
-      latency: latency !== null ? latency * 1000 : null, // Convert to ms
+      latency: roundedLatency,
       packetLoss: null, // Not available from expo-video
       jitter: null, // Not available from expo-video
-      bufferHealth,
+      bufferHealth: roundedBufferHealth,
       stallCount,
       lastStallDuration,
     };
+
+    prevStatsRef.current = stats;
     onStatsUpdate(stats);
   }, [quality, bitrate, latency, bufferHealth, stallCount, lastStallDuration, onStatsUpdate]);
 
@@ -247,7 +279,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Buffer */}
         <View style={styles.statItem}>
           <View style={styles.bufferBarContainer}>
-            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], { width: `${bufferHealth * 100}%` }]} />
+            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], { width: `${bufferPercent}%` }]} />
           </View>
           <Text style={styles.statValue}>{bufferAhead.toFixed(1)}s</Text>
         </View>
