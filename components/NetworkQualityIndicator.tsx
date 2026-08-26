@@ -247,7 +247,12 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Buffer */}
         <View style={styles.statItem}>
           <View style={styles.bufferBarContainer}>
-            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], { width: `${bufferHealth * 100}%` }]} />
+            {/*
+             * Performance optimization: Round buffer health percentage to integer
+             * Math.round(bufferHealth * 100) to avoid allocating dynamic floating-point
+             * percentage strings (e.g. "73.29800000000001%") on every 500ms playback update.
+             */}
+            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], { width: `${Math.round(bufferHealth * 100)}%` }]} />
           </View>
           <Text style={styles.statValue}>{bufferAhead.toFixed(1)}s</Text>
         </View>
