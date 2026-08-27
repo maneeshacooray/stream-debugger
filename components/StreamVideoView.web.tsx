@@ -1,5 +1,5 @@
 import type { WebStreamVideoPlayer } from '@/hooks/useStreamVideoPlayer.web';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 type ContentFit = 'contain' | 'cover' | 'fill' | 'none' | 'scale-down';
@@ -14,6 +14,8 @@ type StreamVideoViewProps = {
   // to the browser's native <video> controls on web.
   fullscreenOptions?: { enable?: boolean };
 };
+
+const ACCENT = '#818cf8';
 
 // Renders the real <video> element a WebStreamVideoPlayer attaches hls.js
 // to. Kept deliberately close to expo-video's <VideoView> prop surface so
@@ -37,16 +39,165 @@ export function StreamVideoView({
   const flatStyle = StyleSheet.flatten(style) || {};
 
   return (
-    <video
-      ref={videoRef}
+    <div
       style={{
         ...flatStyle,
-        objectFit: contentFit === 'fill' ? 'fill' : contentFit,
-        backgroundColor: '#000',
+        position: flatStyle.position ?? 'relative',
+        overflow: 'hidden',
       }}
-      controls={nativeControls}
-      disablePictureInPicture={allowsPictureInPicture === false}
-      playsInline
-    />
+    >
+      <video
+        ref={videoRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          objectFit: contentFit === 'fill' ? 'fill' : contentFit,
+          objectPosition: 'center',
+          backgroundColor: '#000',
+        }}
+        controls={false}
+        disablePictureInPicture={allowsPictureInPicture === false}
+        playsInline
+      />
+      {nativeControls && player && <ControlsBar player={player} />}
+    </div>
   );
 }
+
+// A native <video controls> bar depends on MediaSource/hls.js correctly
+// reporting duration, which is inconsistent across browsers for HLS — it
+// often renders with no usable scrub bar at all. This is a minimal bar we
+// fully control instead, so seeking always works for VOD sources.
+function ControlsBar({ player }: { player: WebStreamVideoPlayer }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isLive, setIsLive] = useState(false);
+  const [muted, setMuted] = useState(player.muted);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
+
+  useEffect(() => {
+    const syncFromPlayer = () => {
+      setDuration(player.duration);
+      setIsLive(player.isLive);
+    };
+    syncFromPlayer();
+
+    const listeners = [
+      player.addListener('playingChange', ({ isPlaying: playing }: { isPlaying: boolean }) =>
+        setIsPlaying(playing)
+      ),
+      player.addListener('timeUpdate', ({ currentTime: time }: { currentTime: number }) => {
+        setCurrentTime(time);
+        syncFromPlayer();
+      }),
+      player.addListener('sourceLoad', syncFromPlayer),
+    ];
+    return () => listeners.forEach((l) => l.remove());
+  }, [player]);
+
+  const togglePlay = () => (isPlaying ? player.pause() : player.play());
+  const toggleMute = () => {
+    const next = !muted;
+    player.muted = next;
+    setMuted(next);
+  };
+
+  const displayTime = scrubTime ?? currentTime;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 10px',
+        background: 'linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0))',
+        fontFamily: 'system-ui, sans-serif',
+      }}
+    >
+      <button
+        onClick={togglePlay}
+        aria-label={isPlaying ? 'Pause' : 'Play'}
+        style={iconButtonStyle}
+      >
+        {isPlaying ? '⏸' : '▶'}
+      </button>
+
+      <span style={timeTextStyle}>{formatTime(displayTime)}</span>
+
+      {isLive ? (
+        <span style={liveBadgeStyle}>LIVE</span>
+      ) : (
+        <input
+          type="range"
+          min={0}
+          max={duration > 0 ? duration : 0}
+          step={0.1}
+          value={Math.min(displayTime, duration || 0)}
+          disabled={!duration}
+          onChange={(e) => setScrubTime(Number(e.target.value))}
+          onMouseUp={() => {
+            if (scrubTime != null) player.seek(scrubTime);
+            setScrubTime(null);
+          }}
+          onTouchEnd={() => {
+            if (scrubTime != null) player.seek(scrubTime);
+            setScrubTime(null);
+          }}
+          style={{ flex: 1, accentColor: ACCENT, cursor: duration ? 'pointer' : 'default' }}
+        />
+      )}
+
+      <span style={timeTextStyle}>{duration > 0 ? formatTime(duration) : '--:--'}</span>
+
+      <button onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} style={iconButtonStyle}>
+        {muted ? '🔇' : '🔊'}
+      </button>
+    </div>
+  );
+}
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+const iconButtonStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: '#f8fafc',
+  fontSize: 16,
+  lineHeight: 1,
+  cursor: 'pointer',
+  padding: 4,
+};
+
+const timeTextStyle: React.CSSProperties = {
+  color: '#f8fafc',
+  fontSize: 12,
+  fontVariantNumeric: 'tabular-nums',
+  minWidth: 34,
+  textAlign: 'center',
+};
+
+const liveBadgeStyle: React.CSSProperties = {
+  flex: 1,
+  color: '#f87171',
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+};
