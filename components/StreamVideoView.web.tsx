@@ -8,10 +8,12 @@ type StreamVideoViewProps = {
   style?: any;
   player: WebStreamVideoPlayer | null;
   contentFit?: ContentFit;
-  // Kept for API parity with expo-video's <VideoView>; on web the scrub bar
-  // is rendered separately by <StreamVideoControls> (see app/index.tsx),
-  // outside of any gesture-handling wrapper, so this component never draws
-  // its own controls.
+  // Uses the browser's own native <video controls> chrome rather than a
+  // custom-built bar — it's the browser's well-tested UI, and it avoids
+  // the whole class of bug where a custom DOM control layer competes with
+  // react-native-gesture-handler for pointer events (see ZoomableVideo in
+  // app/index.tsx, which only mounts its GestureDetector while zoom is
+  // actually active so it can't intercept these controls otherwise).
   nativeControls?: boolean;
   allowsPictureInPicture?: boolean;
   // Accepted for API parity with expo-video's VideoView; fullscreen is left
@@ -26,6 +28,7 @@ export function StreamVideoView({
   style,
   player,
   contentFit = 'contain',
+  nativeControls = true,
   allowsPictureInPicture,
 }: StreamVideoViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -59,7 +62,7 @@ export function StreamVideoView({
           objectPosition: 'center',
           backgroundColor: '#000',
         }}
-        controls={false}
+        controls={nativeControls}
         disablePictureInPicture={allowsPictureInPicture === false}
         playsInline
       />
