@@ -20,6 +20,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '../hooks/useResponsive';
 import { useStreamVideoPlayer } from '../hooks/useStreamVideoPlayer';
+import { StreamVideoControls } from '../components/StreamVideoControls';
 import { StreamVideoView } from '../components/StreamVideoView';
 
 // Stream configuration
@@ -594,18 +595,25 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
   const composed = Gesture.Simultaneous(pinchGesture, panGesture);
 
   return (
-    <GestureDetector gesture={composed}>
-      <Animated.View style={[styles.video, animatedStyle]}>
-        <StreamVideoView
-          style={StyleSheet.absoluteFill}
-          player={player}
-          allowsPictureInPicture
-          fullscreenOptions={{ enable: false }}
-          contentFit="contain"
-          nativeControls // Show native controls (timeline, play/pause) at all times
-        />
-      </Animated.View>
-    </GestureDetector>
+    // The scrub bar (StreamVideoControls, web-only) is rendered as a sibling
+    // outside GestureDetector rather than layered inside it — nested inside,
+    // react-native-gesture-handler's pinch/pan pointer handling on web
+    // swallows clicks/drags meant for the controls.
+    <View style={[styles.video, { position: 'relative' }]}>
+      <GestureDetector gesture={composed}>
+        <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
+          <StreamVideoView
+            style={StyleSheet.absoluteFill}
+            player={player}
+            allowsPictureInPicture
+            fullscreenOptions={{ enable: false }}
+            contentFit="contain"
+            nativeControls // Native platforms: show native controls at all times
+          />
+        </Animated.View>
+      </GestureDetector>
+      <StreamVideoControls player={player} />
+    </View>
   );
 });
 
