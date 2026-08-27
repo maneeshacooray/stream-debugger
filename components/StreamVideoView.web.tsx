@@ -128,7 +128,7 @@ function ControlsBar({ player }: { player: WebStreamVideoPlayer }) {
         aria-label={isPlaying ? 'Pause' : 'Play'}
         style={iconButtonStyle}
       >
-        {isPlaying ? '⏸' : '▶'}
+        {isPlaying ? <PauseIcon /> : <PlayIcon />}
       </button>
 
       <span style={timeTextStyle}>{formatTime(displayTime)}</span>
@@ -159,9 +159,44 @@ function ControlsBar({ player }: { player: WebStreamVideoPlayer }) {
       <span style={timeTextStyle}>{duration > 0 ? formatTime(duration) : '--:--'}</span>
 
       <button onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} style={iconButtonStyle}>
-        {muted ? '🔇' : '🔊'}
+        {muted ? <MuteIcon /> : <VolumeIcon />}
       </button>
     </div>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M3.5 2.5v11l10-5.5-10-5.5z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+      <rect x="3.5" y="2.5" width="3" height="11" />
+      <rect x="9.5" y="2.5" width="3" height="11" />
+    </svg>
+  );
+}
+
+function VolumeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+      <path d="M2 6h2.5L8 3v10L4.5 10H2V6z" fill="currentColor" stroke="none" />
+      <path d="M10.5 5.5a4 4 0 0 1 0 5M12.3 3.7a6.7 6.7 0 0 1 0 8.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MuteIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+      <path d="M2 6h2.5L8 3v10L4.5 10H2V6z" fill="currentColor" stroke="none" />
+      <path d="M10.5 5.5l4 5M14.5 5.5l-4 5" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -180,8 +215,9 @@ const iconButtonStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: '#f8fafc',
-  fontSize: 16,
-  lineHeight: 1,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   cursor: 'pointer',
   padding: 4,
 };
