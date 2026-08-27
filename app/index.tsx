@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { router, useFocusEffect } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -20,6 +19,8 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '../hooks/useResponsive';
+import { useStreamVideoPlayer } from '../hooks/useStreamVideoPlayer';
+import { StreamVideoView } from '../components/StreamVideoView';
 
 // Stream configuration
 import { fetchHLSManifest, StreamConfig, useStreamConfig } from '../config/streams';
@@ -595,7 +596,7 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={[styles.video, animatedStyle]}>
-        <VideoView
+        <StreamVideoView
           style={StyleSheet.absoluteFill}
           player={player}
           allowsPictureInPicture
@@ -620,7 +621,7 @@ interface MultiViewPlayerProps {
 }
 
 const MultiViewPlayer = memo(function MultiViewPlayer({ stream, onLog, onPress, theme, styles }: MultiViewPlayerProps) {
-  const player = useVideoPlayer(stream.url || null);
+  const player = useStreamVideoPlayer(stream.url || null);
   const mountedRef = useRef(true);
   const loadStartRef = useRef(Date.now());
   const [loadTimeMs, setLoadTimeMs] = useState<number | null>(null);
@@ -674,7 +675,7 @@ const MultiViewPlayer = memo(function MultiViewPlayer({ stream, onLog, onPress, 
     <Pressable style={styles.multiViewCard} onPress={handlePress}>
       <View style={[styles.multiViewVideoWrapper, { pointerEvents: 'none' }]}>
         {player && stream.url && (
-          <VideoView
+          <StreamVideoView
             style={styles.video}
             player={player}
             contentFit="contain"
@@ -1428,10 +1429,10 @@ export default function StreamDebugger() {
   // Refs
   const logIdRef = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
-  const playerRef = useRef<ReturnType<typeof useVideoPlayer> | null>(null);
+  const playerRef = useRef<ReturnType<typeof useStreamVideoPlayer> | null>(null);
 
   // Player - only create the main player (use null when no URL to prevent empty string issues)
-  const player = useVideoPlayer(streamUrl || null);
+  const player = useStreamVideoPlayer(streamUrl || null);
   playerRef.current = player;
 
   // ============================================================================
