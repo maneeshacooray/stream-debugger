@@ -171,6 +171,12 @@ export class WebStreamVideoPlayer {
     this.video?.pause();
   }
 
+  seek(time: number) {
+    if (this.video) {
+      this.video.currentTime = Math.max(0, time);
+    }
+  }
+
   addListener(event: string, callback: Listener) {
     let set = this.listeners.get(event);
     if (!set) {
