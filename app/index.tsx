@@ -922,15 +922,23 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           Math.abs(prev.bufferedPosition - bufferedPosition) > 0.1 ||
           prev.currentOffsetFromLive !== currentOffsetFromLive;
 
-        // Check if track metadata changed to avoid unnecessary object re-allocation
-        const videoTrackChanged = (player.videoTrack && (!prev.videoTrack ||
-          player.videoTrack.bitrate !== prev.videoTrack.bitrate ||
-          player.videoTrack.size.width !== prev.videoTrack.width)) ||
-          (!player.videoTrack && prev.videoTrack);
+        /**
+         * Performance optimization: Assign player.videoTrack and player.audioTrack to local variables
+         * to avoid redundant getter invocations, object instantiations, and level lookups
+         * inside high-frequency timeUpdate passes (500ms).
+         */
+        const currentVideoTrack = player.videoTrack;
+        const currentAudioTrack = player.audioTrack;
 
-        const audioTrackChanged = (player.audioTrack && (!prev.audioTrack ||
-          player.audioTrack.label !== prev.audioTrack.label)) ||
-          (!player.audioTrack && prev.audioTrack);
+        // Check if track metadata changed to avoid unnecessary object re-allocation
+        const videoTrackChanged = (currentVideoTrack && (!prev.videoTrack ||
+          currentVideoTrack.bitrate !== prev.videoTrack.bitrate ||
+          currentVideoTrack.size.width !== prev.videoTrack.width)) ||
+          (!currentVideoTrack && prev.videoTrack);
+
+        const audioTrackChanged = (currentAudioTrack && (!prev.audioTrack ||
+          currentAudioTrack.label !== prev.audioTrack.label)) ||
+          (!currentAudioTrack && prev.audioTrack);
 
         const playerStateChanged = prev.duration !== player.duration ||
           prev.isLive !== player.isLive ||
@@ -952,16 +960,16 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           playbackRate: player.playbackRate,
           volume: player.volume,
           muted: player.muted,
-          videoTrack: videoTrackChanged ? (player.videoTrack ? {
-            width: player.videoTrack.size.width,
-            height: player.videoTrack.size.height,
-            bitrate: player.videoTrack.bitrate,
-            frameRate: player.videoTrack.frameRate,
-            mimeType: player.videoTrack.mimeType,
+          videoTrack: videoTrackChanged ? (currentVideoTrack ? {
+            width: currentVideoTrack.size.width,
+            height: currentVideoTrack.size.height,
+            bitrate: currentVideoTrack.bitrate,
+            frameRate: currentVideoTrack.frameRate,
+            mimeType: currentVideoTrack.mimeType,
           } : null) : prev.videoTrack,
-          audioTrack: audioTrackChanged ? (player.audioTrack ? {
-            label: player.audioTrack.label,
-            language: player.audioTrack.language,
+          audioTrack: audioTrackChanged ? (currentAudioTrack ? {
+            label: currentAudioTrack.label,
+            language: currentAudioTrack.language,
           } : null) : prev.audioTrack,
         };
       });

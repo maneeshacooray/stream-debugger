@@ -49,8 +49,19 @@ export class WebStreamVideoPlayer {
   private _playbackRate = 1;
   private _timeUpdateEventInterval = 0;
 
+  // Performance optimization: Cache video and audio track getter outputs to eliminate
+  // redundant object allocations and HLS level lookups during high-frequency player events
+  // (e.g., 500ms timeUpdate passes). Caches are invalidated when tracks or sources change.
+  private _cachedVideoTrack: StreamVideoTrack | null | undefined = undefined;
+  private _cachedAudioTrack: StreamAudioTrack | null | undefined = undefined;
+
   constructor(source: string | null) {
     this.uri = source;
+  }
+
+  private invalidateTrackCache() {
+    this._cachedVideoTrack = undefined;
+    this._cachedAudioTrack = undefined;
   }
 
   // -- mutable playback properties (mirror expo-video's VideoPlayer API) --
@@ -121,11 +132,15 @@ export class WebStreamVideoPlayer {
   }
 
   get videoTrack(): StreamVideoTrack | null {
+    if (this._cachedVideoTrack !== undefined) {
+      return this._cachedVideoTrack;
+    }
+    let track: StreamVideoTrack | null = null;
     if (this.hls && this.hls.levels.length > 0 && this.hls.currentLevel >= 0) {
       const level = this.hls.levels[this.hls.currentLevel];
       if (level) {
         const frameRateAttr = level.attrs?.['FRAME-RATE'];
-        return {
+        track = {
           id: String(this.hls.currentLevel),
           size: { width: level.width || 0, height: level.height || 0 },
           mimeType: level.videoCodec ? `video/mp4; codecs="${level.videoCodec}"` : null,
@@ -134,9 +149,8 @@ export class WebStreamVideoPlayer {
           frameRate: frameRateAttr ? Number(frameRateAttr) : null,
         };
       }
-    }
-    if (this.video?.videoWidth) {
-      return {
+    } else if (this.video?.videoWidth) {
+      track = {
         id: '0',
         size: { width: this.video.videoWidth, height: this.video.videoHeight },
         mimeType: null,
@@ -145,17 +159,23 @@ export class WebStreamVideoPlayer {
         frameRate: null,
       };
     }
-    return null;
+    this._cachedVideoTrack = track;
+    return track;
   }
 
   get audioTrack(): StreamAudioTrack | null {
+    if (this._cachedAudioTrack !== undefined) {
+      return this._cachedAudioTrack;
+    }
+    let track: StreamAudioTrack | null = null;
     if (this.hls && this.hls.audioTracks.length > 0 && this.hls.audioTrack >= 0) {
-      const track = this.hls.audioTracks[this.hls.audioTrack];
-      if (track) {
-        return { id: String(this.hls.audioTrack), language: track.lang || '', label: track.name || '' };
+      const trackObj = this.hls.audioTracks[this.hls.audioTrack];
+      if (trackObj) {
+        track = { id: String(this.hls.audioTrack), language: trackObj.lang || '', label: trackObj.name || '' };
       }
     }
-    return null;
+    this._cachedAudioTrack = track;
+    return track;
   }
 
   // -- controls --
@@ -225,6 +245,7 @@ export class WebStreamVideoPlayer {
     this.hls?.destroy();
     this.hls = null;
     this.video = null;
+    this.invalidateTrackCache();
 
     if (this.timeUpdateTimer) {
       clearInterval(this.timeUpdateTimer);
@@ -238,6 +259,7 @@ export class WebStreamVideoPlayer {
   private onCanPlay = () => this.setStatus('readyToPlay');
 
   private onLoadedMetadata = () => {
+    this.invalidateTrackCache();
     this.emit('sourceLoad', {
       videoSource: this.uri,
       duration: this.duration,
@@ -292,6 +314,7 @@ export class WebStreamVideoPlayer {
 
     this.hls?.destroy();
     this.hls = null;
+    this.invalidateTrackCache();
 
     if (!this.uri) {
       video.removeAttribute('src');
@@ -313,7 +336,11 @@ export class WebStreamVideoPlayer {
         }
       });
       hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+        this.invalidateTrackCache();
         this.emit('videoTrackChange', { videoTrack: this.videoTrack });
+      });
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => {
+        this.invalidateTrackCache();
       });
 
       hls.loadSource(this.uri);
