@@ -49,6 +49,12 @@ export class WebStreamVideoPlayer {
   private _playbackRate = 1;
   private _timeUpdateEventInterval = 0;
 
+  // Track Caching to prevent object allocations on high-frequency getter access
+  private _cachedVideoTrack: StreamVideoTrack | null = null;
+  private _cachedAudioTrack: StreamAudioTrack | null = null;
+  private _videoTrackDirty = true;
+  private _audioTrackDirty = true;
+
   constructor(source: string | null) {
     this.uri = source;
   }
@@ -121,11 +127,16 @@ export class WebStreamVideoPlayer {
   }
 
   get videoTrack(): StreamVideoTrack | null {
+    if (!this._videoTrackDirty) {
+      return this._cachedVideoTrack;
+    }
+
+    let track: StreamVideoTrack | null = null;
     if (this.hls && this.hls.levels.length > 0 && this.hls.currentLevel >= 0) {
       const level = this.hls.levels[this.hls.currentLevel];
       if (level) {
         const frameRateAttr = level.attrs?.['FRAME-RATE'];
-        return {
+        track = {
           id: String(this.hls.currentLevel),
           size: { width: level.width || 0, height: level.height || 0 },
           mimeType: level.videoCodec ? `video/mp4; codecs="${level.videoCodec}"` : null,
@@ -134,9 +145,8 @@ export class WebStreamVideoPlayer {
           frameRate: frameRateAttr ? Number(frameRateAttr) : null,
         };
       }
-    }
-    if (this.video?.videoWidth) {
-      return {
+    } else if (this.video?.videoWidth) {
+      track = {
         id: '0',
         size: { width: this.video.videoWidth, height: this.video.videoHeight },
         mimeType: null,
@@ -145,17 +155,28 @@ export class WebStreamVideoPlayer {
         frameRate: null,
       };
     }
-    return null;
+
+    this._cachedVideoTrack = track;
+    this._videoTrackDirty = false;
+    return track;
   }
 
   get audioTrack(): StreamAudioTrack | null {
+    if (!this._audioTrackDirty) {
+      return this._cachedAudioTrack;
+    }
+
+    let track: StreamAudioTrack | null = null;
     if (this.hls && this.hls.audioTracks.length > 0 && this.hls.audioTrack >= 0) {
-      const track = this.hls.audioTracks[this.hls.audioTrack];
-      if (track) {
-        return { id: String(this.hls.audioTrack), language: track.lang || '', label: track.name || '' };
+      const trackObj = this.hls.audioTracks[this.hls.audioTrack];
+      if (trackObj) {
+        track = { id: String(this.hls.audioTrack), language: trackObj.lang || '', label: trackObj.name || '' };
       }
     }
-    return null;
+
+    this._cachedAudioTrack = track;
+    this._audioTrackDirty = false;
+    return track;
   }
 
   // -- controls --
@@ -225,6 +246,10 @@ export class WebStreamVideoPlayer {
     this.hls?.destroy();
     this.hls = null;
     this.video = null;
+    this._videoTrackDirty = true;
+    this._audioTrackDirty = true;
+    this._cachedVideoTrack = null;
+    this._cachedAudioTrack = null;
 
     if (this.timeUpdateTimer) {
       clearInterval(this.timeUpdateTimer);
@@ -238,6 +263,8 @@ export class WebStreamVideoPlayer {
   private onCanPlay = () => this.setStatus('readyToPlay');
 
   private onLoadedMetadata = () => {
+    this._videoTrackDirty = true;
+    this._audioTrackDirty = true;
     this.emit('sourceLoad', {
       videoSource: this.uri,
       duration: this.duration,
@@ -295,10 +322,16 @@ export class WebStreamVideoPlayer {
 
     if (!this.uri) {
       video.removeAttribute('src');
+      this._videoTrackDirty = true;
+      this._audioTrackDirty = true;
+      this._cachedVideoTrack = null;
+      this._cachedAudioTrack = null;
       return;
     }
 
     this.setStatus('loading');
+    this._videoTrackDirty = true;
+    this._audioTrackDirty = true;
 
     const looksLikeHls = /\.m3u8(\?|$)/i.test(this.uri);
     const hasNativeHlsSupport = video.canPlayType('application/vnd.apple.mpegurl') !== '';
@@ -313,7 +346,15 @@ export class WebStreamVideoPlayer {
         }
       });
       hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+        this._videoTrackDirty = true;
         this.emit('videoTrackChange', { videoTrack: this.videoTrack });
+      });
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => {
+        this._audioTrackDirty = true;
+      });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        this._videoTrackDirty = true;
+        this._audioTrackDirty = true;
       });
 
       hls.loadSource(this.uri);

@@ -915,6 +915,10 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
     if (!player) return;
 
     const listener = player.addListener('timeUpdate', ({ currentTime, bufferedPosition, currentOffsetFromLive }: { currentTime: number; bufferedPosition: number; currentOffsetFromLive: number | null }) => {
+      // Capture tracks into local variables once to avoid redundant getter calls in high-frequency path
+      const playerVideoTrack = player.videoTrack;
+      const playerAudioTrack = player.audioTrack;
+
       setVideoStats(prev => {
         // Optimization: Check if fast-changing values actually changed significantly (time updates are 500ms)
         // or if player state changed. We use 0.1s threshold for time.
@@ -923,14 +927,14 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           prev.currentOffsetFromLive !== currentOffsetFromLive;
 
         // Check if track metadata changed to avoid unnecessary object re-allocation
-        const videoTrackChanged = (player.videoTrack && (!prev.videoTrack ||
-          player.videoTrack.bitrate !== prev.videoTrack.bitrate ||
-          player.videoTrack.size.width !== prev.videoTrack.width)) ||
-          (!player.videoTrack && prev.videoTrack);
+        const videoTrackChanged = (playerVideoTrack && (!prev.videoTrack ||
+          playerVideoTrack.bitrate !== prev.videoTrack.bitrate ||
+          playerVideoTrack.size.width !== prev.videoTrack.width)) ||
+          (!playerVideoTrack && prev.videoTrack);
 
-        const audioTrackChanged = (player.audioTrack && (!prev.audioTrack ||
-          player.audioTrack.label !== prev.audioTrack.label)) ||
-          (!player.audioTrack && prev.audioTrack);
+        const audioTrackChanged = (playerAudioTrack && (!prev.audioTrack ||
+          playerAudioTrack.label !== prev.audioTrack.label)) ||
+          (!playerAudioTrack && prev.audioTrack);
 
         const playerStateChanged = prev.duration !== player.duration ||
           prev.isLive !== player.isLive ||
@@ -952,16 +956,16 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           playbackRate: player.playbackRate,
           volume: player.volume,
           muted: player.muted,
-          videoTrack: videoTrackChanged ? (player.videoTrack ? {
-            width: player.videoTrack.size.width,
-            height: player.videoTrack.size.height,
-            bitrate: player.videoTrack.bitrate,
-            frameRate: player.videoTrack.frameRate,
-            mimeType: player.videoTrack.mimeType,
+          videoTrack: videoTrackChanged ? (playerVideoTrack ? {
+            width: playerVideoTrack.size.width,
+            height: playerVideoTrack.size.height,
+            bitrate: playerVideoTrack.bitrate,
+            frameRate: playerVideoTrack.frameRate,
+            mimeType: playerVideoTrack.mimeType,
           } : null) : prev.videoTrack,
-          audioTrack: audioTrackChanged ? (player.audioTrack ? {
-            label: player.audioTrack.label,
-            language: player.audioTrack.language,
+          audioTrack: audioTrackChanged ? (playerAudioTrack ? {
+            label: playerAudioTrack.label,
+            language: playerAudioTrack.language,
           } : null) : prev.audioTrack,
         };
       });
