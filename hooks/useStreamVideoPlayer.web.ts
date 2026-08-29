@@ -49,6 +49,15 @@ export class WebStreamVideoPlayer {
   private _playbackRate = 1;
   private _timeUpdateEventInterval = 0;
 
+  /**
+   * Performance optimization: Cache computed getter outputs (videoTrack and audioTrack)
+   * using class instance fields and dirty flags invalidated on state changes
+   * (e.g. track switch, metadata load, resize). This eliminates dynamic object allocations
+   * during high-frequency player update paths (like 500ms timeUpdate ticks).
+   */
+  private _cachedVideoTrack: StreamVideoTrack | null | undefined = undefined;
+  private _cachedAudioTrack: StreamAudioTrack | null | undefined = undefined;
+
   constructor(source: string | null) {
     this.uri = source;
   }
@@ -121,11 +130,15 @@ export class WebStreamVideoPlayer {
   }
 
   get videoTrack(): StreamVideoTrack | null {
+    if (this._cachedVideoTrack !== undefined) {
+      return this._cachedVideoTrack;
+    }
+
     if (this.hls && this.hls.levels.length > 0 && this.hls.currentLevel >= 0) {
       const level = this.hls.levels[this.hls.currentLevel];
       if (level) {
         const frameRateAttr = level.attrs?.['FRAME-RATE'];
-        return {
+        this._cachedVideoTrack = {
           id: String(this.hls.currentLevel),
           size: { width: level.width || 0, height: level.height || 0 },
           mimeType: level.videoCodec ? `video/mp4; codecs="${level.videoCodec}"` : null,
@@ -133,10 +146,11 @@ export class WebStreamVideoPlayer {
           bitrate: level.bitrate || null,
           frameRate: frameRateAttr ? Number(frameRateAttr) : null,
         };
+        return this._cachedVideoTrack;
       }
     }
     if (this.video?.videoWidth) {
-      return {
+      this._cachedVideoTrack = {
         id: '0',
         size: { width: this.video.videoWidth, height: this.video.videoHeight },
         mimeType: null,
@@ -144,17 +158,25 @@ export class WebStreamVideoPlayer {
         bitrate: null,
         frameRate: null,
       };
+      return this._cachedVideoTrack;
     }
+    this._cachedVideoTrack = null;
     return null;
   }
 
   get audioTrack(): StreamAudioTrack | null {
+    if (this._cachedAudioTrack !== undefined) {
+      return this._cachedAudioTrack;
+    }
+
     if (this.hls && this.hls.audioTracks.length > 0 && this.hls.audioTrack >= 0) {
       const track = this.hls.audioTracks[this.hls.audioTrack];
       if (track) {
-        return { id: String(this.hls.audioTrack), language: track.lang || '', label: track.name || '' };
+        this._cachedAudioTrack = { id: String(this.hls.audioTrack), language: track.lang || '', label: track.name || '' };
+        return this._cachedAudioTrack;
       }
     }
+    this._cachedAudioTrack = null;
     return null;
   }
 
@@ -206,6 +228,7 @@ export class WebStreamVideoPlayer {
     video.addEventListener('waiting', this.onWaiting);
     video.addEventListener('canplay', this.onCanPlay);
     video.addEventListener('loadedmetadata', this.onLoadedMetadata);
+    video.addEventListener('resize', this.onResize);
     video.addEventListener('error', this.onError);
 
     this.loadSource();
@@ -220,7 +243,11 @@ export class WebStreamVideoPlayer {
     video.removeEventListener('waiting', this.onWaiting);
     video.removeEventListener('canplay', this.onCanPlay);
     video.removeEventListener('loadedmetadata', this.onLoadedMetadata);
+    video.removeEventListener('resize', this.onResize);
     video.removeEventListener('error', this.onError);
+
+    this._cachedVideoTrack = undefined;
+    this._cachedAudioTrack = undefined;
 
     this.hls?.destroy();
     this.hls = null;
@@ -236,8 +263,13 @@ export class WebStreamVideoPlayer {
   private onPause = () => this.emit('playingChange', { isPlaying: false });
   private onWaiting = () => this.setStatus('loading');
   private onCanPlay = () => this.setStatus('readyToPlay');
+  private onResize = () => {
+    this._cachedVideoTrack = undefined;
+  };
 
   private onLoadedMetadata = () => {
+    this._cachedVideoTrack = undefined;
+    this._cachedAudioTrack = undefined;
     this.emit('sourceLoad', {
       videoSource: this.uri,
       duration: this.duration,
@@ -290,6 +322,9 @@ export class WebStreamVideoPlayer {
     const video = this.video;
     if (!video) return;
 
+    this._cachedVideoTrack = undefined;
+    this._cachedAudioTrack = undefined;
+
     this.hls?.destroy();
     this.hls = null;
 
@@ -313,7 +348,17 @@ export class WebStreamVideoPlayer {
         }
       });
       hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+        this._cachedVideoTrack = undefined;
         this.emit('videoTrackChange', { videoTrack: this.videoTrack });
+      });
+
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => {
+        this._cachedAudioTrack = undefined;
+      });
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        this._cachedVideoTrack = undefined;
+        this._cachedAudioTrack = undefined;
       });
 
       hls.loadSource(this.uri);
