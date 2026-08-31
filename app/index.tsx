@@ -61,6 +61,7 @@ interface LogEntry {
   category: LogCategory;
   message: string;
   messageLower: string; // Pre-calculated lowercase message for high-performance filtering
+  isMultiline: boolean; // Pre-calculated multiline status to eliminate string scanning during render
 }
 
 // ============================================================================
@@ -249,8 +250,11 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
    * from the central StyleSheet instead of allocating new style objects or
    * using useMemo for calculations within each instance. This significantly reduces
    * memory allocation and CPU overhead during high-frequency log updates (up to 500ms).
+   *
+   * Performance optimization: Uses pre-calculated log.isMultiline to eliminate
+   * string scanning (.includes('\n') and .length > 80) during rendering.
    */
-  const isMultiline = log.message.includes('\n') || log.message.length > 80;
+  const isMultiline = log.isMultiline;
 
   const handlePress = useCallback(() => {
     if (isMultiline) onToggleExpand(log.id);
@@ -400,6 +404,50 @@ interface QuickAccessBarProps {
   styles: any;
 }
 
+interface QuickAccessItemProps {
+  stream: StreamConfig;
+  isActive: boolean;
+  onPress: (stream: StreamConfig) => void;
+  styles: any;
+}
+
+/**
+ * Performance optimization: Isolated memoized QuickAccessItem component to prevent
+ * inline arrow function allocations in loops and eliminate redundant re-renders of
+ * inactive quick access buttons when switching active stream.
+ */
+const QuickAccessItem = memo(function QuickAccessItem({
+  stream,
+  isActive,
+  onPress,
+  styles,
+}: QuickAccessItemProps) {
+  const handlePress = useCallback(() => {
+    onPress(stream);
+  }, [onPress, stream]);
+
+  return (
+    <Pressable
+      style={[
+        styles.quickAccessBtn,
+        isActive && styles.quickAccessBtnActive,
+      ]}
+      onPress={handlePress}
+    >
+      {stream.isLive && <View style={styles.liveDotSmall} />}
+      <Text
+        style={[
+          styles.quickAccessText,
+          isActive && styles.quickAccessTextActive,
+        ]}
+        numberOfLines={1}
+      >
+        {stream.name}
+      </Text>
+    </Pressable>
+  );
+});
+
 /**
  * Memoized QuickAccessBar to prevent re-renders during playback or logging.
  */
@@ -418,25 +466,13 @@ const QuickAccessBar = memo(function QuickAccessBar({
       contentContainerStyle={styles.quickAccessBar}
     >
       {favoriteStreams.map(stream => (
-        <Pressable
+        <QuickAccessItem
           key={stream.id}
-          style={[
-            styles.quickAccessBtn,
-            currentStreamId === stream.id && styles.quickAccessBtnActive,
-          ]}
-          onPress={() => onLoadStream(stream)}
-        >
-          {stream.isLive && <View style={styles.liveDotSmall} />}
-          <Text
-            style={[
-              styles.quickAccessText,
-              currentStreamId === stream.id && styles.quickAccessTextActive,
-            ]}
-            numberOfLines={1}
-          >
-            {stream.name}
-          </Text>
-        </Pressable>
+          stream={stream}
+          isActive={currentStreamId === stream.id}
+          onPress={onLoadStream}
+          styles={styles}
+        />
       ))}
     </ScrollView>
   );
@@ -1468,6 +1504,7 @@ export default function StreamDebugger() {
       category,
       message,
       messageLower: message.toLowerCase(),
+      isMultiline: message.includes('\n') || message.length > 80,
     };
 
     logManager.addLog(entry);
