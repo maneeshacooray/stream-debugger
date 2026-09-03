@@ -196,6 +196,7 @@ export class WebStreamVideoPlayer {
   seek(time: number) {
     if (this.video) {
       this.video.currentTime = Math.max(0, time);
+      this.emitTimeUpdate();
     }
   }
 
@@ -225,6 +226,7 @@ export class WebStreamVideoPlayer {
 
     video.addEventListener('play', this.onPlay);
     video.addEventListener('pause', this.onPause);
+    video.addEventListener('seeked', this.onSeeked);
     video.addEventListener('waiting', this.onWaiting);
     video.addEventListener('canplay', this.onCanPlay);
     video.addEventListener('loadedmetadata', this.onLoadedMetadata);
@@ -240,6 +242,7 @@ export class WebStreamVideoPlayer {
 
     video.removeEventListener('play', this.onPlay);
     video.removeEventListener('pause', this.onPause);
+    video.removeEventListener('seeked', this.onSeeked);
     video.removeEventListener('waiting', this.onWaiting);
     video.removeEventListener('canplay', this.onCanPlay);
     video.removeEventListener('loadedmetadata', this.onLoadedMetadata);
@@ -253,14 +256,23 @@ export class WebStreamVideoPlayer {
     this.hls = null;
     this.video = null;
 
-    if (this.timeUpdateTimer) {
-      clearInterval(this.timeUpdateTimer);
-      this.timeUpdateTimer = null;
-    }
+    this.stopTimeUpdateTimer();
   }
 
-  private onPlay = () => this.emit('playingChange', { isPlaying: true });
-  private onPause = () => this.emit('playingChange', { isPlaying: false });
+  private onPlay = () => {
+    this.emit('playingChange', { isPlaying: true });
+    this.restartTimeUpdateTimer();
+  };
+
+  private onPause = () => {
+    this.emit('playingChange', { isPlaying: false });
+    this.stopTimeUpdateTimer();
+    this.emitTimeUpdate();
+  };
+
+  private onSeeked = () => {
+    this.emitTimeUpdate();
+  };
   private onWaiting = () => this.setStatus('loading');
   private onCanPlay = () => this.setStatus('readyToPlay');
   private onResize = () => {
@@ -294,21 +306,33 @@ export class WebStreamVideoPlayer {
     this.emit('statusChange', { status, oldStatus, error });
   }
 
+  private emitTimeUpdate = () => {
+    if (!this.video) return;
+    this.emit('timeUpdate', {
+      currentTime: this.currentTime,
+      currentLiveTimestamp: null,
+      currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
+      bufferedPosition: this.bufferedPosition,
+    });
+  };
+
+  /**
+   * Performance optimization: Only run time update interval when video is playing.
+   * Pausing or stopping the video halts the timer, avoiding JS thread timer churn
+   * and redundant callback listener executions every 500ms when playback is idle.
+   */
   private restartTimeUpdateTimer() {
+    this.stopTimeUpdateTimer();
+    if (!this.video || this.video.paused || this._timeUpdateEventInterval <= 0) return;
+
+    this.timeUpdateTimer = setInterval(this.emitTimeUpdate, this._timeUpdateEventInterval * 1000);
+  }
+
+  private stopTimeUpdateTimer() {
     if (this.timeUpdateTimer) {
       clearInterval(this.timeUpdateTimer);
       this.timeUpdateTimer = null;
     }
-    if (!this.video || this._timeUpdateEventInterval <= 0) return;
-
-    this.timeUpdateTimer = setInterval(() => {
-      this.emit('timeUpdate', {
-        currentTime: this.currentTime,
-        currentLiveTimestamp: null,
-        currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
-        bufferedPosition: this.bufferedPosition,
-      });
-    }, this._timeUpdateEventInterval * 1000);
   }
 
   private computeLiveOffset(): number | null {
