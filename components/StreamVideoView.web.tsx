@@ -1,5 +1,5 @@
 import type { WebStreamVideoPlayer } from '@/hooks/useStreamVideoPlayer.web';
-import React, { useEffect, useRef } from 'react';
+import React, { memo, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 
 type ContentFit = 'contain' | 'cover' | 'fill' | 'none' | 'scale-down';
@@ -24,7 +24,13 @@ type StreamVideoViewProps = {
 // Renders the real <video> element a WebStreamVideoPlayer attaches hls.js
 // to. Kept deliberately close to expo-video's <VideoView> prop surface so
 // the two call sites in app/index.tsx don't need platform branching.
-export function StreamVideoView({
+/**
+ * Performance optimization: StreamVideoView is wrapped in React.memo to prevent
+ * unnecessary component re-renders when parent components update during playback
+ * or log updates. Wrapper div and video inline styles are memoized with useMemo
+ * to eliminate repeated StyleSheet.flatten() evaluations and object allocations.
+ */
+export const StreamVideoView = memo(function StreamVideoView({
   style,
   player,
   contentFit = 'contain',
@@ -40,32 +46,37 @@ export function StreamVideoView({
     return () => player.detach(video);
   }, [player]);
 
-  const flatStyle = StyleSheet.flatten(style) || {};
+  const divStyle = useMemo(() => {
+    const flatStyle = StyleSheet.flatten(style) || {};
+    return {
+      ...flatStyle,
+      position: flatStyle.position ?? 'relative',
+      overflow: 'hidden',
+    };
+  }, [style]);
+
+  const videoStyle = useMemo(() => {
+    return {
+      position: 'absolute' as const,
+      inset: 0,
+      width: '100%',
+      height: '100%',
+      display: 'block',
+      objectFit: contentFit === 'fill' ? ('fill' as const) : contentFit,
+      objectPosition: 'center',
+      backgroundColor: '#000',
+    };
+  }, [contentFit]);
 
   return (
-    <div
-      style={{
-        ...flatStyle,
-        position: flatStyle.position ?? 'relative',
-        overflow: 'hidden',
-      }}
-    >
+    <div style={divStyle}>
       <video
         ref={videoRef}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          display: 'block',
-          objectFit: contentFit === 'fill' ? 'fill' : contentFit,
-          objectPosition: 'center',
-          backgroundColor: '#000',
-        }}
+        style={videoStyle}
         controls={nativeControls}
         disablePictureInPicture={allowsPictureInPicture === false}
         playsInline
       />
     </div>
   );
-}
+});
