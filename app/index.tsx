@@ -1688,8 +1688,20 @@ export default function StreamDebugger() {
     addLog('system', level, message);
   }, [addLog]);
 
+  const prevMultiViewModeRef = useRef(multiViewMode);
+
   // Handle multi-view mode changes - pause/resume main player for efficiency
   useEffect(() => {
+    /**
+     * Performance optimization: Bail out if multiViewMode has not actually changed.
+     * This prevents redundant effect executions, premature player play() calls,
+     * and spurious "Multi-view mode: Disabled" log dispatches when streamUrl changes.
+     */
+    if (prevMultiViewModeRef.current === multiViewMode) {
+      return;
+    }
+    prevMultiViewModeRef.current = multiViewMode;
+
     if (multiViewMode) {
       addLog('system', 'info', 'Multi-view mode: Enabled');
       // Pause main player when entering multi-view (it's not visible)
@@ -1701,11 +1713,11 @@ export default function StreamDebugger() {
         }
       }
     } else {
+      addLog('system', 'info', 'Multi-view mode: Disabled');
       // Resume main player when exiting multi-view
       if (playerRef.current && streamUrl) {
         try {
           playerRef.current.play();
-          addLog('system', 'info', 'Multi-view mode: Disabled');
         } catch {
           // Player may not be ready
         }
