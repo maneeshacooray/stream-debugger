@@ -139,12 +139,43 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
      */
     if (line.startsWith('#')) {
       /**
+       * Performance optimization: Check #EXTINF: first before #EXT-X- block.
+       * In media playlists (which make up the vast majority of requests in video players),
+       * #EXTINF tags appear before every segment (hundreds or thousands of lines), whereas
+       * #EXT-X- tags appear only once in the header/footer. Checking #EXTINF: first avoids
+       * evaluating line.startsWith('#EXT-X-') on every single segment line.
+       */
+      if (line.startsWith('#EXTINF:')) {
+        /**
+         * Performance optimization: Replace expensive regular expression matching
+         * with manual index parsing using substring() and indexOf(). This completely
+         * eliminates regex engine execution overhead, match group arrays, and
+         * dynamic heap allocations, achieving O(1) garbage collection pressure.
+         */
+        result.type = 'media';
+        const value = line.substring(8);
+        const commaIdx = value.indexOf(',');
+        let durationStr = value;
+        if (commaIdx !== -1) {
+          durationStr = value.substring(0, commaIdx);
+          currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
+        } else {
+          currentSegmentTitle = undefined;
+        }
+        currentSegmentDuration = parseFloat(durationStr);
+        if (!isNaN(currentSegmentDuration)) {
+          totalDuration += currentSegmentDuration;
+        } else {
+          currentSegmentDuration = null;
+        }
+      }
+      /**
        * Performance optimization: Group all #EXT-X- tags under a single parent conditional
        * and use offset-based prefix checking (startsWith(search, 7)) to skip re-evaluating the
        * 7-character "#EXT-X-" prefix on every tag check. Consolidated all #EXT-X- tags (including
        * DISCONTINUITY and PROGRAM-DATE-TIME) into this single block for ~20% faster tag parsing.
        */
-      if (line.startsWith('#EXT-X-')) {
+      else if (line.startsWith('#EXT-X-')) {
         // Version
         if (line.startsWith('VERSION:', 7)) {
           /**
@@ -214,31 +245,6 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
         // Program date time
         else if (line.startsWith('PROGRAM-DATE-TIME:', 7)) {
           // Could store this if needed
-        }
-      }
-      // Segment info (media playlist)
-      else if (line.startsWith('#EXTINF:')) {
-        /**
-         * Performance optimization: Replace expensive regular expression matching
-         * with manual index parsing using substring() and indexOf(). This completely
-         * eliminates regex engine execution overhead, match group arrays, and
-         * dynamic heap allocations, achieving O(1) garbage collection pressure.
-         */
-        result.type = 'media';
-        const value = line.substring(8);
-        const commaIdx = value.indexOf(',');
-        let durationStr = value;
-        if (commaIdx !== -1) {
-          durationStr = value.substring(0, commaIdx);
-          currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
-        } else {
-          currentSegmentTitle = undefined;
-        }
-        currentSegmentDuration = parseFloat(durationStr);
-        if (!isNaN(currentSegmentDuration)) {
-          totalDuration += currentSegmentDuration;
-        } else {
-          currentSegmentDuration = null;
         }
       }
     } else {
