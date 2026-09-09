@@ -139,12 +139,41 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
      */
     if (line.startsWith('#')) {
       /**
+       * Performance optimization: Evaluate #EXTINF: first because it is the most frequent tag
+       * in HLS media playlists (occurring on every segment line). Testing #EXTINF: before #EXT-X-
+       * short-circuits the startWith('#EXT-X-') check for thousands of segment tag lines in large playlists.
+       */
+      if (line.startsWith('#EXTINF:')) {
+        /**
+         * Performance optimization: Replace expensive regular expression matching
+         * with manual index parsing using substring() and indexOf(). This completely
+         * eliminates regex engine execution overhead, match group arrays, and
+         * dynamic heap allocations, achieving O(1) garbage collection pressure.
+         */
+        result.type = 'media';
+        const value = line.substring(8);
+        const commaIdx = value.indexOf(',');
+        let durationStr = value;
+        if (commaIdx !== -1) {
+          durationStr = value.substring(0, commaIdx);
+          currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
+        } else {
+          currentSegmentTitle = undefined;
+        }
+        currentSegmentDuration = parseFloat(durationStr);
+        if (!isNaN(currentSegmentDuration)) {
+          totalDuration += currentSegmentDuration;
+        } else {
+          currentSegmentDuration = null;
+        }
+      }
+      /**
        * Performance optimization: Group all #EXT-X- tags under a single parent conditional
        * and use offset-based prefix checking (startsWith(search, 7)) to skip re-evaluating the
        * 7-character "#EXT-X-" prefix on every tag check. Consolidated all #EXT-X- tags (including
        * DISCONTINUITY and PROGRAM-DATE-TIME) into this single block for ~20% faster tag parsing.
        */
-      if (line.startsWith('#EXT-X-')) {
+      else if (line.startsWith('#EXT-X-')) {
         // Version
         if (line.startsWith('VERSION:', 7)) {
           /**
@@ -214,31 +243,6 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
         // Program date time
         else if (line.startsWith('PROGRAM-DATE-TIME:', 7)) {
           // Could store this if needed
-        }
-      }
-      // Segment info (media playlist)
-      else if (line.startsWith('#EXTINF:')) {
-        /**
-         * Performance optimization: Replace expensive regular expression matching
-         * with manual index parsing using substring() and indexOf(). This completely
-         * eliminates regex engine execution overhead, match group arrays, and
-         * dynamic heap allocations, achieving O(1) garbage collection pressure.
-         */
-        result.type = 'media';
-        const value = line.substring(8);
-        const commaIdx = value.indexOf(',');
-        let durationStr = value;
-        if (commaIdx !== -1) {
-          durationStr = value.substring(0, commaIdx);
-          currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
-        } else {
-          currentSegmentTitle = undefined;
-        }
-        currentSegmentDuration = parseFloat(durationStr);
-        if (!isNaN(currentSegmentDuration)) {
-          totalDuration += currentSegmentDuration;
-        } else {
-          currentSegmentDuration = null;
         }
       }
     } else {
