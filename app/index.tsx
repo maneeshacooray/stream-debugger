@@ -590,33 +590,42 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
     }
   }, [enabled, scale, translateX, translateY]);
 
-  const pinchGesture = Gesture.Pinch()
-    .enabled(enabled)
-    .onUpdate((event) => {
-      scale.value = Math.max(1, Math.min(event.scale, 4));
-      focalX.value = event.focalX;
-      focalY.value = event.focalY;
-    })
-    .onEnd(() => {
-      scale.value = withSpring(1);
-      translateX.value = withSpring(0);
-      translateY.value = withSpring(0);
-    });
-
-  const panGesture = Gesture.Pan()
-    .enabled(enabled)
-    .onUpdate((event) => {
-      if (scale.value > 1) {
-        translateX.value = event.translationX;
-        translateY.value = event.translationY;
-      }
-    })
-    .onEnd(() => {
-      if (scale.value <= 1) {
+  /**
+   * Performance optimization: Memoize gesture handler composition.
+   * Prevents creating new PinchGesture, PanGesture, and ComposedGesture
+   * instances and re-binding callback listeners on every re-render of ZoomableVideo.
+   */
+  const composed = useMemo(() => {
+    const pinchGesture = Gesture.Pinch()
+      .enabled(enabled)
+      .onUpdate((event) => {
+        scale.value = Math.max(1, Math.min(event.scale, 4));
+        focalX.value = event.focalX;
+        focalY.value = event.focalY;
+      })
+      .onEnd(() => {
+        scale.value = withSpring(1);
         translateX.value = withSpring(0);
         translateY.value = withSpring(0);
-      }
-    });
+      });
+
+    const panGesture = Gesture.Pan()
+      .enabled(enabled)
+      .onUpdate((event) => {
+        if (scale.value > 1) {
+          translateX.value = event.translationX;
+          translateY.value = event.translationY;
+        }
+      })
+      .onEnd(() => {
+        if (scale.value <= 1) {
+          translateX.value = withSpring(0);
+          translateY.value = withSpring(0);
+        }
+      });
+
+    return Gesture.Simultaneous(pinchGesture, panGesture);
+  }, [enabled, scale, focalX, focalY, translateX, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -626,8 +635,6 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
     ],
     zIndex: enabled ? 999 : 0, // Ensure it's on top when zooming
   }));
-
-  const composed = Gesture.Simultaneous(pinchGesture, panGesture);
 
   return (
     <GestureDetector gesture={composed}>
