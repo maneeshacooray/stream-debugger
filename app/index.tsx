@@ -1573,11 +1573,19 @@ export default function StreamDebugger() {
           }
           validLineCount++;
 
-          if (trimmed.startsWith('#EXT')) {
-            if (trimmed.includes('BANDWIDTH') || trimmed.includes('RESOLUTION') || trimmed.includes('CODECS')) {
+          /**
+           * Performance optimization: Categorize lines with an O(1) character code check ('#')
+           * first. This avoids running redundant .startsWith('#EXT') and .startsWith('#')
+           * evaluations on thousands of segment URI lines in VOD manifests.
+           *
+           * Furthermore, guarding variant tag checks with .startsWith('#EXT-X-') avoids
+           * evaluating 3 .includes() string searches on every #EXTINF: tag line.
+           */
+          if (trimmed.charCodeAt(0) === 35 /* '#' */) {
+            if (trimmed.startsWith('#EXT-X-') && (trimmed.includes('BANDWIDTH') || trimmed.includes('RESOLUTION') || trimmed.includes('CODECS'))) {
               tagsToLog.push(trimmed);
             }
-          } else if (!trimmed.startsWith('#')) {
+          } else {
             segmentCount++;
           }
         }
