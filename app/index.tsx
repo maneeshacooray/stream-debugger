@@ -1582,7 +1582,17 @@ export default function StreamDebugger() {
            * evaluating 3 .includes() string searches on every #EXTINF: tag line.
            */
           if (trimmed.charCodeAt(0) === 35 /* '#' */) {
-            if (trimmed.startsWith('#EXT-X-') && (trimmed.includes('BANDWIDTH') || trimmed.includes('RESOLUTION') || trimmed.includes('CODECS'))) {
+            /**
+             * Performance optimization: Directly check for master playlist variant stream tags
+             * (#EXT-X-STREAM-INF and #EXT-X-I-FRAME-STREAM-INF). This avoids executing three
+             * redundant .includes() string searches on every non-variant tag line (e.g.
+             * #EXT-X-TARGETDURATION, #EXT-X-MEDIA-SEQUENCE, #EXT-X-VERSION, #EXTINF) during
+             * manifest processing.
+             */
+            if (
+              trimmed.startsWith('#EXT-X-STREAM-INF') ||
+              trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF')
+            ) {
               tagsToLog.push(trimmed);
             }
           } else {
