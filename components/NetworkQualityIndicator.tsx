@@ -111,6 +111,7 @@ interface QualityBadgeProps {
  * Performance optimization: Isolated QualityBadge component to prevent
  * redundant re-renders of the signal bars and label when video stats
  * (like currentTime) update every 500ms, but the quality status is stable.
+ * Uses static lookup objects to eliminate dynamic string interpolation for styles.
  */
 const QualityBadge = memo(function QualityBadge({ quality }: QualityBadgeProps) {
   const isActive = (level: number) => {
@@ -124,14 +125,14 @@ const QualityBadge = memo(function QualityBadge({ quality }: QualityBadgeProps) 
   };
 
   return (
-    <View style={[styles.qualityBadge, styles[`badge_${quality}`]]}>
+    <View style={[styles.qualityBadge, BADGE_STYLES[quality]]}>
       <View style={styles.signalBars}>
-        <View style={[styles.signalBar, styles.bar0, isActive(0) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
-        <View style={[styles.signalBar, styles.bar1, isActive(1) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
-        <View style={[styles.signalBar, styles.bar2, isActive(2) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
-        <View style={[styles.signalBar, styles.bar3, isActive(3) ? styles[`barActive_${quality}`] : styles[`barInactive_${quality}`]]} />
+        <View style={[styles.signalBar, styles.bar0, isActive(0) ? BAR_ACTIVE_STYLES[quality] : BAR_INACTIVE_STYLES[quality]]} />
+        <View style={[styles.signalBar, styles.bar1, isActive(1) ? BAR_ACTIVE_STYLES[quality] : BAR_INACTIVE_STYLES[quality]]} />
+        <View style={[styles.signalBar, styles.bar2, isActive(2) ? BAR_ACTIVE_STYLES[quality] : BAR_INACTIVE_STYLES[quality]]} />
+        <View style={[styles.signalBar, styles.bar3, isActive(3) ? BAR_ACTIVE_STYLES[quality] : BAR_INACTIVE_STYLES[quality]]} />
       </View>
-      <Text style={[styles.qualityText, styles[`text_${quality}`]]}>{QUALITY_LABELS[quality]}</Text>
+      <Text style={[styles.qualityText, TEXT_STYLES[quality]]}>{QUALITY_LABELS[quality]}</Text>
     </View>
   );
 });
@@ -280,7 +281,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Buffer */}
         <View style={styles.statItem}>
           <View style={styles.bufferBarContainer}>
-            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], { width: `${roundedBufferPercent}%` }]} />
+            <View style={[styles.bufferBar, BUFFER_BAR_STYLES[quality], { width: `${roundedBufferPercent}%` }]} />
           </View>
           <Text style={styles.statValue}>{bufferAhead.toFixed(1)}s</Text>
         </View>
@@ -399,5 +400,51 @@ const styles = StyleSheet.create({
   buffer_bar_poor: { backgroundColor: qualityColors.poor },
   buffer_bar_offline: { backgroundColor: qualityColors.offline },
 });
+
+/**
+ * Performance optimization: Static lookup objects for bounded quality styles.
+ * Using static lookup map objects eliminates dynamic template string interpolation
+ * (e.g., styles[`badge_${quality}`]) and heap allocations on high-frequency
+ * render updates (every 500ms during video playback).
+ */
+const BADGE_STYLES = {
+  excellent: styles.badge_excellent,
+  good: styles.badge_good,
+  fair: styles.badge_fair,
+  poor: styles.badge_poor,
+  offline: styles.badge_offline,
+} as const;
+
+const TEXT_STYLES = {
+  excellent: styles.text_excellent,
+  good: styles.text_good,
+  fair: styles.text_fair,
+  poor: styles.text_poor,
+  offline: styles.text_offline,
+} as const;
+
+const BAR_ACTIVE_STYLES = {
+  excellent: styles.barActive_excellent,
+  good: styles.barActive_good,
+  fair: styles.barActive_fair,
+  poor: styles.barActive_poor,
+  offline: styles.barActive_offline,
+} as const;
+
+const BAR_INACTIVE_STYLES = {
+  excellent: styles.barInactive_excellent,
+  good: styles.barInactive_good,
+  fair: styles.barInactive_fair,
+  poor: styles.barInactive_poor,
+  offline: styles.barInactive_offline,
+} as const;
+
+const BUFFER_BAR_STYLES = {
+  excellent: styles.buffer_bar_excellent,
+  good: styles.buffer_bar_good,
+  fair: styles.buffer_bar_fair,
+  poor: styles.buffer_bar_poor,
+  offline: styles.buffer_bar_offline,
+} as const;
 
 export default NetworkQualityIndicator;

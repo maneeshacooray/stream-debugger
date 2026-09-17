@@ -15,3 +15,9 @@
 **Learning:** Calling `.trim()` unconditionally during line-by-line parsing of large text manifests (e.g. HLS playlists with thousands of lines) creates thousands of transient string allocations and garbage collection pressure, even though over 95% of manifest lines have no leading or trailing whitespace.
 
 **Action:** Add a fast-path character code guard (`charCodeAt(0) <= 32 || charCodeAt(len - 1) <= 32`) before invoking `.trim()`. This skips string allocations for clean lines while safely preserving trimming behavior for lines with leading or trailing control characters/whitespace.
+
+## 2026-08-01 - Static Style Lookup Objects for Bounded State Keys
+
+**Learning:** In components re-rendered on high-frequency playback updates (e.g., NetworkQualityIndicator every 500ms), dynamic template string interpolations for style lookups (e.g., `styles['badge_' + quality]`) create dynamic string allocations and property lookup overhead on every render frame.
+
+**Action:** Map bounded state values (e.g., network quality levels) to static module-level lookup objects (`BADGE_STYLES[quality]`). This replaces dynamic string keys with O(1) object property access and eliminates heap allocations during high-frequency update passes.
