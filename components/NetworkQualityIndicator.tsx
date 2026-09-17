@@ -44,6 +44,14 @@ const QUALITY_LABELS: Record<NetworkQuality, string> = {
   offline: 'Offline',
 };
 
+/**
+ * Performance optimization: Pre-allocate static width style objects for integer percentage values (0..100%).
+ * This completely eliminates dynamic style object allocations on every high-frequency time update frame (every 500ms).
+ */
+const PERCENT_WIDTH_STYLES: { width: `${number}%` }[] = Array.from({ length: 101 }, (_, i) => ({
+  width: `${i}%` as const,
+}));
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -280,7 +288,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Buffer */}
         <View style={styles.statItem}>
           <View style={styles.bufferBarContainer}>
-            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], { width: `${roundedBufferPercent}%` }]} />
+            <View style={[styles.bufferBar, styles[`buffer_bar_${quality}`], PERCENT_WIDTH_STYLES[roundedBufferPercent]]} />
           </View>
           <Text style={styles.statValue}>{bufferAhead.toFixed(1)}s</Text>
         </View>
@@ -297,7 +305,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {stallCount > 0 && (
           <View style={styles.statItem}>
             <Ionicons name="warning-outline" size={12} color={qualityColors.poor} />
-            <Text style={[styles.statValue, { color: qualityColors.poor }]}>{stallCount}</Text>
+            <Text style={[styles.statValue, styles.statValuePoor]}>{stallCount}</Text>
           </View>
         )}
       </View>
@@ -355,6 +363,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94a3b8',
     fontFamily: monoFont,
+  },
+  statValuePoor: {
+    color: qualityColors.poor,
   },
   bufferBarContainer: {
     width: 30,
