@@ -281,7 +281,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {/* Buffer */}
         <View style={styles.statItem}>
           <View style={styles.bufferBarContainer}>
-            <View style={[styles.bufferBar, BUFFER_BAR_STYLES[quality], { width: `${roundedBufferPercent}%` }]} />
+            <View style={[styles.bufferBar, BUFFER_BAR_STYLES[quality], PERCENT_WIDTH_STYLES[roundedBufferPercent]]} />
           </View>
           <Text style={styles.statValue}>{bufferAhead.toFixed(1)}s</Text>
         </View>
@@ -298,7 +298,7 @@ export const NetworkQualityIndicator = memo(function NetworkQualityIndicator({
         {stallCount > 0 && (
           <View style={styles.statItem}>
             <Ionicons name="warning-outline" size={12} color={qualityColors.poor} />
-            <Text style={[styles.statValue, { color: qualityColors.poor }]}>{stallCount}</Text>
+            <Text style={[styles.statValue, styles.stallText]}>{stallCount}</Text>
           </View>
         )}
       </View>
@@ -399,7 +399,15 @@ const styles = StyleSheet.create({
   buffer_bar_fair: { backgroundColor: qualityColors.fair },
   buffer_bar_poor: { backgroundColor: qualityColors.poor },
   buffer_bar_offline: { backgroundColor: qualityColors.offline },
+  stallText: { color: qualityColors.poor },
 });
+
+/**
+ * Performance optimization: Static array of width style objects (0-100%)
+ * to eliminate dynamic template string interpolation (`${roundedBufferPercent}%`) and
+ * inline style object allocations on every high-frequency (500ms) render pass.
+ */
+const PERCENT_WIDTH_STYLES = Array.from({ length: 101 }, (_, i) => ({ width: `${i}%` } as const));
 
 /**
  * Performance optimization: Static lookup objects for bounded quality styles.
