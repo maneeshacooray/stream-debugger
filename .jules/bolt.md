@@ -21,3 +21,9 @@
 **Learning:** In components re-rendered on high-frequency playback updates (e.g., NetworkQualityIndicator every 500ms), dynamic template string interpolations for style lookups (e.g., `styles['badge_' + quality]`) create dynamic string allocations and property lookup overhead on every render frame.
 
 **Action:** Map bounded state values (e.g., network quality levels) to static module-level lookup objects (`BADGE_STYLES[quality]`). This replaces dynamic string keys with O(1) object property access and eliminates heap allocations during high-frequency update passes.
+
+## 2026-08-01 - Conditionally Mounting GestureDetector in Video Playback Wrappers
+
+**Learning:** Mounting `GestureDetector` unconditionally over video views (e.g. `ZoomableVideo`) registers active gesture handlers and touch/pointer event listeners on the video container even when gesture interaction mode (e.g. pinch-to-zoom) is disabled. This creates unnecessary gesture handling overhead during normal video playback and can interfere with native video controls.
+
+**Action:** Conditionally bypass `GestureDetector` when `enabled` is false, returning the inner `Animated.View` directly. Ensure all React hooks remain above the conditional return to maintain hook order. This eliminates gesture handler overhead during standard playback.
