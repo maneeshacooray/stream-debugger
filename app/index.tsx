@@ -636,6 +636,27 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
     zIndex: enabled ? 999 : 0, // Ensure it's on top when zooming
   }));
 
+  /**
+   * Performance optimization: Only mount GestureDetector when zoom is active (enabled is true).
+   * Bypassing GestureDetector in default non-zoom playback mode eliminates gesture handler
+   * touch/pointer event listeners and handler registration overhead, while preventing gesture
+   * handlers from competing with native browser/OS video controls for pointer events.
+   */
+  if (!enabled) {
+    return (
+      <Animated.View style={[styles.video, animatedStyle]}>
+        <StreamVideoView
+          style={StyleSheet.absoluteFill}
+          player={player}
+          allowsPictureInPicture
+          fullscreenOptions={{ enable: false }}
+          contentFit="contain"
+          nativeControls // Show the browser/OS's own native controls at all times
+        />
+      </Animated.View>
+    );
+  }
+
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={[styles.video, animatedStyle]}>
