@@ -995,9 +995,15 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
         const currentAudioTrack = player.audioTrack;
 
         // Check if track metadata changed to avoid unnecessary object re-allocation
+        // Performance optimization: Compare all track metadata fields (width, height, bitrate,
+        // frameRate, mimeType) so state update is accurately triggered during ABR switches
+        // or aspect ratio changes while preserving state reference when parameters match.
         const videoTrackChanged = (currentVideoTrack && (!prev.videoTrack ||
           currentVideoTrack.bitrate !== prev.videoTrack.bitrate ||
-          currentVideoTrack.size.width !== prev.videoTrack.width)) ||
+          currentVideoTrack.size.width !== prev.videoTrack.width ||
+          currentVideoTrack.size.height !== prev.videoTrack.height ||
+          currentVideoTrack.frameRate !== prev.videoTrack.frameRate ||
+          currentVideoTrack.mimeType !== prev.videoTrack.mimeType)) ||
           (!currentVideoTrack && prev.videoTrack);
 
         const audioTrackChanged = (currentAudioTrack && (!prev.audioTrack ||
