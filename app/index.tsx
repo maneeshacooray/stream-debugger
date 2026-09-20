@@ -997,7 +997,9 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
         // Check if track metadata changed to avoid unnecessary object re-allocation
         const videoTrackChanged = (currentVideoTrack && (!prev.videoTrack ||
           currentVideoTrack.bitrate !== prev.videoTrack.bitrate ||
-          currentVideoTrack.size.width !== prev.videoTrack.width)) ||
+          currentVideoTrack.size.width !== prev.videoTrack.width ||
+          currentVideoTrack.size.height !== prev.videoTrack.height ||
+          currentVideoTrack.frameRate !== prev.videoTrack.frameRate)) ||
           (!currentVideoTrack && prev.videoTrack);
 
         const audioTrackChanged = (currentAudioTrack && (!prev.audioTrack ||
