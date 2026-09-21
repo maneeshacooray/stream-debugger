@@ -272,13 +272,13 @@ const LogEntryItem = memo(function LogEntryItem({ log, isExpanded, onToggleExpan
     >
       <View style={styles.logHeader}>
         <Text style={styles.logTime}>{log.time}</Text>
-        <View style={[styles.logLevel, styles[`logLevel_${log.level}`]]}>
-          <Text style={[styles.logLevelText, styles[`logLevelText_${log.level}`]]}>
+        <View style={[styles.logLevel, styles.levelStyles[log.level]]}>
+          <Text style={[styles.logLevelText, styles.levelTextStyles[log.level]]}>
             {UPPERCASE_LEVELS[log.level]}
           </Text>
         </View>
-        <View style={[styles.logCategory, styles[`logCategory_${log.category}`]]}>
-          <Text style={[styles.logCategoryText, styles[`logCategoryText_${log.category}`]]}>
+        <View style={[styles.logCategory, styles.categoryStyles[log.category]]}>
+          <Text style={[styles.logCategoryText, styles.categoryTextStyles[log.category]]}>
             {log.category}
           </Text>
         </View>
@@ -1193,8 +1193,9 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
   const [autoScroll, setAutoScroll] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
-  // Optimized: Combine stats calculation and filtering into a single pass to reduce
-  // redundant array iterations and intermediate allocations in high-frequency update paths.
+  // Performance optimization: Combine stats calculation and filtering with early continue guards.
+  // Using early returns short-circuits evaluation on non-matching logs immediately,
+  // avoiding unneeded string comparisons and boolean flags during high-frequency log stream updates.
   const { logStats, filteredLogs } = useMemo(() => {
     const stats = { total: logs.length, error: 0, warn: 0, info: 0, debug: 0 };
     const filtered: LogEntry[] = [];
@@ -1205,26 +1206,21 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
       // Update totals (always based on the full log set)
       stats[log.level]++;
 
-      // Apply filtering logic
-      let matches = true;
+      // Skip non-matching category immediately
       if (hasCategoryFilter && log.category !== categoryFilter) {
-        matches = false;
-      } else if (filter) {
-        /**
-         * Performance optimization: Using pre-calculated log.messageLower
-         * eliminates calling log.message.toLowerCase() in the loop over 500 logs,
-         * avoiding up to 500 string allocations and GC cycles on every log update.
-         */
-        matches = (
-          log.messageLower.includes(lowerFilter) ||
-          log.category.includes(lowerFilter) ||
-          log.level.includes(lowerFilter)
-        );
+        continue;
       }
 
-      if (matches) {
-        filtered.push(log);
+      // Skip non-matching text query immediately using pre-calculated lowercase message
+      if (lowerFilter && !(
+        log.messageLower.includes(lowerFilter) ||
+        log.category.includes(lowerFilter) ||
+        log.level.includes(lowerFilter)
+      )) {
+        continue;
       }
+
+      filtered.push(log);
     }
 
     return { logStats: stats, filteredLogs: filtered };
@@ -2022,7 +2018,8 @@ export default function StreamDebugger() {
 // ============================================================================
 // Styles
 // ============================================================================
-const createStyles = (theme: Theme) => StyleSheet.create({
+const createStyles = (theme: Theme) => {
+  const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.bg.primary,
@@ -2695,3 +2692,35 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     borderRadius: 2,
   },
 });
+
+  return {
+    ...styles,
+    /**
+     * Performance optimization: Static lookup maps for bounded log level and category styles.
+     * Using static property access (styles.levelStyles[log.level]) eliminates dynamic template string
+     * allocations (`'logLevel_' + log.level`) and dynamic key lookup overhead on every rendered log entry.
+     */
+    levelStyles: {
+      info: styles.logLevel_info,
+      warn: styles.logLevel_warn,
+      error: styles.logLevel_error,
+      debug: styles.logLevel_debug,
+    },
+    levelTextStyles: {
+      info: styles.logLevelText_info,
+      warn: styles.logLevelText_warn,
+      error: styles.logLevelText_error,
+      debug: styles.logLevelText_debug,
+    },
+    categoryStyles: {
+      http: styles.logCategory_http,
+      player: styles.logCategory_player,
+      system: styles.logCategory_system,
+    },
+    categoryTextStyles: {
+      http: styles.logCategoryText_http,
+      player: styles.logCategoryText_player,
+      system: styles.logCategoryText_system,
+    },
+  };
+};
