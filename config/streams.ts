@@ -229,9 +229,24 @@ class StreamStorage {
   }
 
   getMultiViewStreams(): StreamConfig[] {
-    return this.settings.multiViewStreamIds
-      .map(id => this.getStreamById(id))
-      .filter((s): s is StreamConfig => s !== undefined);
+    /**
+     * Performance optimization: Pre-map streams by ID into a Map object to avoid
+     * nested O(N * M) array searches (.map(id => streams.find(...))) when resolving
+     * multi-view streams. Reduces lookups to O(N + M) complexity.
+     */
+    const streamMap = new Map<string, StreamConfig>();
+    for (let i = 0; i < this.streams.length; i++) {
+      const s = this.streams[i];
+      streamMap.set(s.id, s);
+    }
+    const result: StreamConfig[] = [];
+    for (let i = 0; i < this.settings.multiViewStreamIds.length; i++) {
+      const stream = streamMap.get(this.settings.multiViewStreamIds[i]);
+      if (stream) {
+        result.push(stream);
+      }
+    }
+    return result;
   }
 
   async addStream(

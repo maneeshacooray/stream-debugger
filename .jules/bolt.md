@@ -27,3 +27,9 @@
 **Learning:** Mounting `GestureDetector` unconditionally over video views (e.g. `ZoomableVideo`) registers active gesture handlers and touch/pointer event listeners on the video container even when gesture interaction mode (e.g. pinch-to-zoom) is disabled. This creates unnecessary gesture handling overhead during normal video playback and can interfere with native video controls.
 
 **Action:** Conditionally bypass `GestureDetector` when `enabled` is false, returning the inner `Animated.View` directly. Ensure all React hooks remain above the conditional return to maintain hook order. This eliminates gesture handler overhead during standard playback.
+
+## 2026-08-01 - Pre-Indexing Streams for Map-Based Lookups in Multi-View Operations
+
+**Learning:** Resolving selected multi-view streams and rendering selection lists via `.map(id => streams.find(...))` or `.includes()` / `.indexOf()` performs O(N * M) nested array searches on every execution or state change.
+
+**Action:** Construct an O(1) Map lookup index (`Map<string, StreamConfig>` or `Map<string, number>`) from the stream or ID list before mapping, reducing total resolution complexity from O(N * M) to O(N + M).
