@@ -749,11 +749,18 @@ export default function SettingsScreen() {
 
   // Performance optimization: Memoize the rendered multi-view selection items to
   // avoid redundant list allocations and mapping operations during tab switching or limits adjustment.
+  // Pre-calculate a Map of selected multi-view IDs to their index to replace O(N * M) array
+  // .includes() and .indexOf() searches with O(1) Map lookups.
   const renderedMultiViewItems = useMemo(() => {
     const multiViewStreamIds = settings.multiViewStreamIds || [];
+    const selectionMap = new Map<string, number>();
+    for (let i = 0; i < multiViewStreamIds.length; i++) {
+      selectionMap.set(multiViewStreamIds[i], i);
+    }
+
     return streams.map((stream) => {
-      const isSelected = multiViewStreamIds.includes(stream.id);
-      const selectionIndex = multiViewStreamIds.indexOf(stream.id);
+      const selectionIndex = selectionMap.get(stream.id) ?? -1;
+      const isSelected = selectionIndex !== -1;
 
       return (
         <MultiViewSelectionItem
