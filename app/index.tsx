@@ -1553,15 +1553,24 @@ export default function StreamDebugger() {
       const duration = Date.now() - startTime;
       addLog('http', sharedRes.ok ? 'info' : 'warn', `[RESPONSE] ${sharedRes.status} ${sharedRes.statusText} (${duration}ms)`);
 
-      // Log all headers
-      const headers = sharedRes.headers.map(([key, value]) => `${key}: ${value}`);
-      if (headers.length > 0) {
-        addLog('http', 'debug', `Headers:\n${headers.join('\n')}`);
+      // Performance optimization: Single-pass header formatting and content-type resolution.
+      // By iterating through sharedRes.headers in a single loop, we construct the formatted header
+      // lines and resolve content-type simultaneously, avoiding a second linear search (.find())
+      // and using a fast length check (key.length === 12) before calling .toLowerCase().
+      let contentType = '';
+      const headerLines: string[] = [];
+
+      for (let i = 0; i < sharedRes.headers.length; i++) {
+        const [key, value] = sharedRes.headers[i];
+        headerLines.push(`${key}: ${value}`);
+        if (!contentType && key.length === 12 && key.toLowerCase() === 'content-type') {
+          contentType = value;
+        }
       }
 
-      // Find content-type from shared headers
-      const contentTypePair = sharedRes.headers.find(([key]) => key.toLowerCase() === 'content-type');
-      const contentType = contentTypePair ? contentTypePair[1] : '';
+      if (headerLines.length > 0) {
+        addLog('http', 'debug', `Headers:\n${headerLines.join('\n')}`);
+      }
 
       if (contentType.toLowerCase().includes('mpegurl') || url.toLowerCase().endsWith('.m3u8')) {
         const text = sharedRes.text;
