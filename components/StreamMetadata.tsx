@@ -62,16 +62,45 @@ interface Segment {
 }
 
 // ============================================================================
-// Regular Expressions (Hoisted constants to prevent unnecessary compilation)
-// ============================================================================
-const BANDWIDTH_REGEX = /BANDWIDTH=(\d+)/;
-const RESOLUTION_REGEX = /RESOLUTION=([^\s,]+)/;
-const CODECS_REGEX = /CODECS="([^"]+)"/;
-const FRAME_RATE_REGEX = /FRAME-RATE=([\d.]+)/;
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
+/**
+ * Performance optimization: Extract HLS attribute values directly via manual
+ * index-based substring parsing (`indexOf` and `substring`) instead of regexes.
+ * This completely eliminates regex engine execution overhead, match group arrays,
+ * and dynamic heap allocations during master playlist parsing.
+ */
+function extractAttributeValue(attrs: string, key: string): string | null {
+  const keyLen = key.length;
+  let start = 0;
+  while (start < attrs.length) {
+    const idx = attrs.indexOf(key, start);
+    if (idx === -1) return null;
+
+    // Guard against substring collisions (e.g., BANDWIDTH vs AVERAGE-BANDWIDTH)
+    if (idx === 0 || attrs.charCodeAt(idx - 1) === 44 /* ',' */ || attrs.charCodeAt(idx - 1) === 32 /* ' ' */) {
+      const valueStart = idx + keyLen;
+      if (valueStart >= attrs.length) return null;
+
+      // Quoted attribute value (e.g. CODECS="avc1.4d401f,mp4a.40.2")
+      if (attrs.charCodeAt(valueStart) === 34 /* '"' */) {
+        const endQuote = attrs.indexOf('"', valueStart + 1);
+        if (endQuote !== -1) {
+          return attrs.substring(valueStart + 1, endQuote);
+        }
+      } else {
+        // Unquoted attribute value (e.g. BANDWIDTH=1280000)
+        let commaIdx = attrs.indexOf(',', valueStart);
+        if (commaIdx === -1) {
+          commaIdx = attrs.length;
+        }
+        return attrs.substring(valueStart, commaIdx);
+      }
+    }
+    start = idx + keyLen;
+  }
+  return null;
+}
 function formatBitrate(bps: number): string {
   if (bps >= 1000000) {
     return `${(bps / 1000000).toFixed(2)} Mbps`;
@@ -231,28 +260,34 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
           const attrs = line.substring(18);
           currentVariant = {};
 
-          // Parse bandwidth
-          const bwMatch = attrs.match(BANDWIDTH_REGEX);
-          if (bwMatch) {
-            currentVariant.bandwidth = parseInt(bwMatch[1], 10);
+          /**
+           * Performance optimization: Use manual index-based string extraction
+           * instead of regex matching.
+           */
+          const bwVal = extractAttributeValue(attrs, 'BANDWIDTH=');
+          if (bwVal !== null) {
+            const bw = parseInt(bwVal, 10);
+            if (!isNaN(bw)) {
+              currentVariant.bandwidth = bw;
+            }
           }
 
-          // Parse resolution
-          const resMatch = attrs.match(RESOLUTION_REGEX);
-          if (resMatch) {
-            currentVariant.resolution = resMatch[1];
+          const resVal = extractAttributeValue(attrs, 'RESOLUTION=');
+          if (resVal !== null) {
+            currentVariant.resolution = resVal;
           }
 
-          // Parse codecs
-          const codecMatch = attrs.match(CODECS_REGEX);
-          if (codecMatch) {
-            currentVariant.codecs = codecMatch[1];
+          const codecVal = extractAttributeValue(attrs, 'CODECS=');
+          if (codecVal !== null) {
+            currentVariant.codecs = codecVal;
           }
 
-          // Parse frame rate
-          const frMatch = attrs.match(FRAME_RATE_REGEX);
-          if (frMatch) {
-            currentVariant.frameRate = parseFloat(frMatch[1]);
+          const frVal = extractAttributeValue(attrs, 'FRAME-RATE=');
+          if (frVal !== null) {
+            const fr = parseFloat(frVal);
+            if (!isNaN(fr)) {
+              currentVariant.frameRate = fr;
+            }
           }
         }
         // Program date time
