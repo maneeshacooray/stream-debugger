@@ -127,6 +127,12 @@ const INITIAL_STREAMS: Omit<StreamConfig, 'id' | 'createdAt'>[] = [
 // ============================================================================
 class StreamStorage {
   private streams: StreamConfig[] = [];
+  /**
+   * Performance optimization: Persistent Map lookup index for stream objects keyed by ID.
+   * Maintains O(1) lookups for getStreamById and getMultiViewStreams without creating transient Maps
+   * or performing O(N) array scans on every invocation.
+   */
+  private streamMapById = new Map<string, StreamConfig>();
   private settings: StreamSettings = {
     defaultStreamId: null,
     multiViewStreamIds: [],
@@ -136,6 +142,14 @@ class StreamStorage {
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private listeners: Set<() => void> = new Set();
+
+  private _rebuildMap(): void {
+    this.streamMapById.clear();
+    for (let i = 0; i < this.streams.length; i++) {
+      const s = this.streams[i];
+      this.streamMapById.set(s.id, s);
+    }
+  }
 
   // Initialize storage - loads from AsyncStorage or sets up defaults
   async initialize(): Promise<void> {
@@ -179,6 +193,7 @@ class StreamStorage {
         await AsyncStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
       }
 
+      this._rebuildMap();
       this.initialized = true;
     } catch (error) {
       console.error('Failed to initialize stream storage:', error);
@@ -212,7 +227,7 @@ class StreamStorage {
   }
 
   getStreamById(id: string): StreamConfig | undefined {
-    return this.streams.find(s => s.id === id);
+    return this.streamMapById.get(id);
   }
 
   getStreamByUrl(url: string): StreamConfig | undefined {
@@ -230,18 +245,12 @@ class StreamStorage {
 
   getMultiViewStreams(): StreamConfig[] {
     /**
-     * Performance optimization: Pre-map streams by ID into a Map object to avoid
-     * nested O(N * M) array searches (.map(id => streams.find(...))) when resolving
-     * multi-view streams. Reduces lookups to O(N + M) complexity.
+     * Performance optimization: Direct O(1) Map lookup via streamMapById eliminates
+     * dynamic Map creation and element population overhead on every multi-view resolution.
      */
-    const streamMap = new Map<string, StreamConfig>();
-    for (let i = 0; i < this.streams.length; i++) {
-      const s = this.streams[i];
-      streamMap.set(s.id, s);
-    }
     const result: StreamConfig[] = [];
     for (let i = 0; i < this.settings.multiViewStreamIds.length; i++) {
-      const stream = streamMap.get(this.settings.multiViewStreamIds[i]);
+      const stream = this.streamMapById.get(this.settings.multiViewStreamIds[i]);
       if (stream) {
         result.push(stream);
       }
@@ -266,6 +275,7 @@ class StreamStorage {
     };
 
     this.streams.push(stream);
+    this.streamMapById.set(stream.id, stream);
     await this._saveStreams();
     return stream;
   }
@@ -277,12 +287,14 @@ class StreamStorage {
     const index = this.streams.findIndex(s => s.id === id);
     if (index === -1) return false;
 
-    this.streams[index] = {
+    const updated = {
       ...this.streams[index],
       ...updates,
       name: updates.name?.trim() ?? this.streams[index].name,
       url: updates.url?.trim() ?? this.streams[index].url,
     };
+    this.streams[index] = updated;
+    this.streamMapById.set(id, updated);
     await this._saveStreams();
     return true;
   }
@@ -292,6 +304,7 @@ class StreamStorage {
     if (index === -1) return false;
 
     this.streams.splice(index, 1);
+    this.streamMapById.delete(id);
 
     const needsSettingsCleanup = this.settings.defaultStreamId === id ||
       this.settings.multiViewStreamIds.includes(id);
@@ -386,6 +399,7 @@ class StreamStorage {
       }
 
       this.streams = data.streams;
+      this._rebuildMap();
       if (data.settings) {
         this.settings = { ...this.settings, ...data.settings };
       }
@@ -402,6 +416,7 @@ class StreamStorage {
 
   async clearAllData(): Promise<void> {
     this.streams = [];
+    this.streamMapById.clear();
     this.settings = {
       defaultStreamId: null,
       multiViewStreamIds: [],
