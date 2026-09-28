@@ -999,11 +999,13 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           currentVideoTrack.bitrate !== prev.videoTrack.bitrate ||
           currentVideoTrack.size.width !== prev.videoTrack.width ||
           currentVideoTrack.size.height !== prev.videoTrack.height ||
-          currentVideoTrack.frameRate !== prev.videoTrack.frameRate)) ||
+          currentVideoTrack.frameRate !== prev.videoTrack.frameRate ||
+          currentVideoTrack.mimeType !== prev.videoTrack.mimeType)) ||
           (!currentVideoTrack && prev.videoTrack);
 
         const audioTrackChanged = (currentAudioTrack && (!prev.audioTrack ||
-          currentAudioTrack.label !== prev.audioTrack.label)) ||
+          currentAudioTrack.label !== prev.audioTrack.label ||
+          currentAudioTrack.language !== prev.audioTrack.language)) ||
           (!currentAudioTrack && prev.audioTrack);
 
         const playerStateChanged = prev.duration !== player.duration ||
@@ -1563,7 +1565,12 @@ export default function StreamDebugger() {
       for (let i = 0; i < sharedRes.headers.length; i++) {
         const [key, value] = sharedRes.headers[i];
         headerLines.push(`${key}: ${value}`);
-        if (!contentType && key.length === 12 && key.toLowerCase() === 'content-type') {
+        /**
+         * Performance optimization: Use key === 'content-type' fast-path check
+         * to eliminate dynamic string allocations from .toLowerCase() on standard
+         * Fetch API response headers (which are pre-lowercased).
+         */
+        if (!contentType && (key === 'content-type' || (key.length === 12 && key.toLowerCase() === 'content-type'))) {
           contentType = value;
         }
       }
