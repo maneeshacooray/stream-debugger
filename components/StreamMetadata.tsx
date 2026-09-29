@@ -174,20 +174,20 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
 
     /**
      * Performance optimization: Process lines in a highly efficient hierarchical manner.
-     * By splitting into two distinct paths: tag lines (starting with '#') vs URI/content lines (the rest),
-     * we completely eliminate the overhead of executing up to 10 prefix matching checks (line.startsWith)
+     * By splitting into two distinct paths using an O(1) character code check (`charCodeAt(0) === 35` for '#'):
+     * tag lines vs URI/content lines (the rest), we completely eliminate string prefix evaluation overhead
      * on every URI line. This significantly reduces CPU cycle waste in large VOD manifests containing
      * thousands of segment URIs.
      */
-    if (line.startsWith('#')) {
+    if (line.charCodeAt(0) === 35 /* '#' */) {
       /**
-       * Performance optimization: Check #EXTINF: first before #EXT-X- block.
+       * Performance optimization: Check EXTINF: first before EXT-X- block using offset 1.
        * In media playlists (which make up the vast majority of requests in video players),
-       * #EXTINF tags appear before every segment (hundreds or thousands of lines), whereas
-       * #EXT-X- tags appear only once in the header/footer. Checking #EXTINF: first avoids
-       * evaluating line.startsWith('#EXT-X-') on every single segment line.
+       * EXTINF tags appear before every segment (hundreds or thousands of lines), whereas
+       * EXT-X- tags appear only once in the header/footer. Checking EXTINF: first with offset 1 avoids
+       * re-matching the leading '#' character and evaluating line.startsWith('EXT-X-', 1) on segment lines.
        */
-      if (line.startsWith('#EXTINF:')) {
+      if (line.startsWith('EXTINF:', 1)) {
         /**
          * Performance optimization: Replace expensive regular expression matching
          * with manual index parsing using substring() and indexOf(). This completely
@@ -212,12 +212,11 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
         }
       }
       /**
-       * Performance optimization: Group all #EXT-X- tags under a single parent conditional
-       * and use offset-based prefix checking (startsWith(search, 7)) to skip re-evaluating the
-       * 7-character "#EXT-X-" prefix on every tag check. Consolidated all #EXT-X- tags (including
-       * DISCONTINUITY and PROGRAM-DATE-TIME) into this single block for ~20% faster tag parsing.
+       * Performance optimization: Group all EXT-X- tags under a single parent conditional
+       * and use offset-based prefix checking (startsWith('EXT-X-', 1)) to skip re-evaluating the
+       * leading '#' character. Sub-checks use offset 7 to skip the 7-character "#EXT-X-" prefix.
        */
-      else if (line.startsWith('#EXT-X-')) {
+      else if (line.startsWith('EXT-X-', 1)) {
         // Version
         if (line.startsWith('VERSION:', 7)) {
           /**
