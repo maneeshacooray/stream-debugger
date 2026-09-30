@@ -33,3 +33,9 @@
 **Learning:** Resolving selected multi-view streams and rendering selection lists via `.map(id => streams.find(...))` or `.includes()` / `.indexOf()` performs O(N * M) nested array searches on every execution or state change.
 
 **Action:** Construct an O(1) Map lookup index (`Map<string, StreamConfig>` or `Map<string, number>`) from the stream or ID list before mapping, reducing total resolution complexity from O(N * M) to O(N + M).
+
+## 2026-08-01 - Prefer Strict Equality Over Offset-Based StartsWith Micro-Optimizations
+
+**Learning:** Replacing direct string equality comparisons (like `line === '#EXT-X-ENDLIST'`) with length checks and offset-based `.startsWith('ENDLIST', 7)` calls introduces function call overhead and magic numbers without any measurable performance gain, because JS engines optimize strict equality using string reference and SIMD byte length checks natively.
+
+**Action:** Keep exact string comparisons simple and readable with strict equality `===` instead of attempting string offset micro-optimizations.
