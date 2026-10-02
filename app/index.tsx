@@ -1516,8 +1516,10 @@ export default function StreamDebugger() {
     /**
      * Performance optimization: Fast manual time formatting with pad2/pad3 integer
      * helpers avoids dynamic .toString() and .padStart() function call overhead.
-     * This is critical during high-frequency logging.
+     * Reusing the getTime() timestamp in a local variable eliminates redundant
+     * native Date method calls during high-frequency logging dispatches.
      */
+    const ts = now.getTime();
     const h = pad2(now.getHours());
     const m = pad2(now.getMinutes());
     const s = pad2(now.getSeconds());
@@ -1525,8 +1527,8 @@ export default function StreamDebugger() {
     const timeString = `${h}:${m}:${s}.${ms}`;
 
     const entry: LogEntry = {
-      id: `${now.getTime()}-${++logIdRef.current}`,
-      timestamp: now.getTime(),
+      id: `${ts}-${++logIdRef.current}`,
+      timestamp: ts,
       time: timeString,
       level,
       category,
