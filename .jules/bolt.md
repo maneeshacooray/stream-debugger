@@ -39,3 +39,9 @@
 **Learning:** Replacing direct string equality comparisons (like `line === '#EXT-X-ENDLIST'`) with length checks and offset-based `.startsWith('ENDLIST', 7)` calls introduces function call overhead and magic numbers without any measurable performance gain, because JS engines optimize strict equality using string reference and SIMD byte length checks natively.
 
 **Action:** Keep exact string comparisons simple and readable with strict equality `===` instead of attempting string offset micro-optimizations.
+
+## 2026-08-01 - Caching Scalar Player Getters in High-Frequency Playback Callbacks
+
+**Learning:** In high-frequency time update callbacks (e.g. 500ms `timeUpdate` listeners), evaluating scalar player getters (`player.duration`, `player.isLive`, `player.playbackRate`, `player.volume`, `player.muted`) multiple times per tick for state comparison and payload construction triggers redundant getter evaluations and underlying DOM property queries on every tick.
+
+**Action:** Assign getter outputs to local variables (`const duration = player.duration; ...`) at the start of the callback pass to reuse evaluated values across equality checks and state payload construction.
