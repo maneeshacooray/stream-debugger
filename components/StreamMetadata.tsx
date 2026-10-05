@@ -101,11 +101,29 @@ function extractAttributeValue(attrs: string, key: string): string | null {
   }
   return null;
 }
+const bitrateCache = new Map<number, string>();
+
+/**
+ * Performance optimization: Bounded Map cache for formatBitrate keyed by bps
+ * eliminates redundant float division and .toFixed() string formatting operations
+ * during variant stream parsing.
+ */
 function formatBitrate(bps: number): string {
+  const cached = bitrateCache.get(bps);
+  if (cached !== undefined) return cached;
+
+  let formatted: string;
   if (bps >= 1000000) {
-    return `${(bps / 1000000).toFixed(2)} Mbps`;
+    formatted = `${(bps / 1000000).toFixed(2)} Mbps`;
+  } else {
+    formatted = `${(bps / 1000).toFixed(0)} kbps`;
   }
-  return `${(bps / 1000).toFixed(0)} kbps`;
+
+  if (bitrateCache.size >= 100) {
+    bitrateCache.clear();
+  }
+  bitrateCache.set(bps, formatted);
+  return formatted;
 }
 
 function formatDuration(seconds: number): string {
@@ -217,44 +235,12 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
        * leading '#' character. Sub-checks use offset 7 to skip the 7-character "#EXT-X-" prefix.
        */
       else if (line.startsWith('EXT-X-', 1)) {
-        // Version
-        if (line.startsWith('VERSION:', 7)) {
-          /**
-           * Performance optimization: Replace expensive split(':') with substring()
-           * using the pre-calculated length of the prefix to completely avoid
-           * array allocations and dynamic split parsing.
-           */
-          result.version = parseInt(line.substring(15), 10);
-        }
-        // Target duration
-        else if (line.startsWith('TARGETDURATION:', 7)) {
-          result.targetDuration = parseInt(line.substring(22), 10);
-        }
-        // Media sequence
-        else if (line.startsWith('MEDIA-SEQUENCE:', 7)) {
-          result.mediaSequence = parseInt(line.substring(22), 10);
-        }
-        // Discontinuity sequence
-        else if (line.startsWith('DISCONTINUITY-SEQUENCE:', 7)) {
-          result.discontinuitySequence = parseInt(line.substring(30), 10);
-        }
-        // Discontinuity marker
-        else if (line === '#EXT-X-DISCONTINUITY') {
-          hasDiscontinuity = true;
-        }
-        // Playlist type
-        else if (line.startsWith('PLAYLIST-TYPE:', 7)) {
-          result.playlistType = line.substring(21);
-          if (result.playlistType === 'VOD') {
-            result.isLive = false;
-          }
-        }
-        // End list (VOD indicator)
-        else if (line === '#EXT-X-ENDLIST') {
-          result.isLive = false;
-        }
-        // Stream info (master playlist)
-        else if (line.startsWith('STREAM-INF:', 7)) {
+        /**
+         * Performance optimization: Evaluate STREAM-INF: first under the EXT-X- block.
+         * In master playlists, STREAM-INF: is the most frequent tag (appearing once for every variant stream).
+         * Evaluating it first short-circuits conditional checks on variant lines immediately.
+         */
+        if (line.startsWith('STREAM-INF:', 7)) {
           result.type = 'master';
           const attrs = line.substring(18);
           currentVariant = {};
@@ -288,6 +274,42 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
               currentVariant.frameRate = fr;
             }
           }
+        }
+        // Version
+        else if (line.startsWith('VERSION:', 7)) {
+          /**
+           * Performance optimization: Replace expensive split(':') with substring()
+           * using the pre-calculated length of the prefix to completely avoid
+           * array allocations and dynamic split parsing.
+           */
+          result.version = parseInt(line.substring(15), 10);
+        }
+        // Target duration
+        else if (line.startsWith('TARGETDURATION:', 7)) {
+          result.targetDuration = parseInt(line.substring(22), 10);
+        }
+        // Media sequence
+        else if (line.startsWith('MEDIA-SEQUENCE:', 7)) {
+          result.mediaSequence = parseInt(line.substring(22), 10);
+        }
+        // Discontinuity sequence
+        else if (line.startsWith('DISCONTINUITY-SEQUENCE:', 7)) {
+          result.discontinuitySequence = parseInt(line.substring(30), 10);
+        }
+        // Discontinuity marker
+        else if (line === '#EXT-X-DISCONTINUITY') {
+          hasDiscontinuity = true;
+        }
+        // Playlist type
+        else if (line.startsWith('PLAYLIST-TYPE:', 7)) {
+          result.playlistType = line.substring(21);
+          if (result.playlistType === 'VOD') {
+            result.isLive = false;
+          }
+        }
+        // End list (VOD indicator)
+        else if (line === '#EXT-X-ENDLIST') {
+          result.isLive = false;
         }
         // Program date time
         else if (line.startsWith('PROGRAM-DATE-TIME:', 7)) {

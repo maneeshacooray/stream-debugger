@@ -989,10 +989,16 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
         /**
          * Performance optimization: Assign getter outputs to local variables
          * inside high-frequency event callbacks (500ms timeUpdate ticks) to avoid
-         * evaluating player.videoTrack and player.audioTrack multiple times per tick.
+         * evaluating player.videoTrack, player.audioTrack, and scalar player getters
+         * (duration, isLive, playbackRate, volume, muted) multiple times per tick.
          */
         const currentVideoTrack = player.videoTrack;
         const currentAudioTrack = player.audioTrack;
+        const duration = player.duration;
+        const isLive = player.isLive;
+        const playbackRate = player.playbackRate;
+        const volume = player.volume;
+        const muted = player.muted;
 
         // Check if track metadata changed to avoid unnecessary object re-allocation
         const videoTrackChanged = (currentVideoTrack && (!prev.videoTrack ||
@@ -1008,11 +1014,11 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           currentAudioTrack.language !== prev.audioTrack.language)) ||
           (!currentAudioTrack && prev.audioTrack);
 
-        const playerStateChanged = prev.duration !== player.duration ||
-          prev.isLive !== player.isLive ||
-          prev.playbackRate !== player.playbackRate ||
-          prev.volume !== player.volume ||
-          prev.muted !== player.muted;
+        const playerStateChanged = prev.duration !== duration ||
+          prev.isLive !== isLive ||
+          prev.playbackRate !== playbackRate ||
+          prev.volume !== volume ||
+          prev.muted !== muted;
 
         if (!timeChanged && !videoTrackChanged && !audioTrackChanged && !playerStateChanged) {
           return prev;
@@ -1022,12 +1028,12 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
           ...prev,
           currentTime,
           bufferedPosition,
-          duration: player.duration,
-          isLive: player.isLive,
+          duration,
+          isLive,
           currentOffsetFromLive,
-          playbackRate: player.playbackRate,
-          volume: player.volume,
-          muted: player.muted,
+          playbackRate,
+          volume,
+          muted,
           videoTrack: videoTrackChanged ? (currentVideoTrack ? {
             width: currentVideoTrack.size.width,
             height: currentVideoTrack.size.height,
@@ -1620,15 +1626,13 @@ export default function StreamDebugger() {
            */
           if (trimmed.charCodeAt(0) === 35 /* '#' */) {
             /**
-             * Performance optimization: Directly check for master playlist variant stream tags
-             * (#EXT-X-STREAM-INF and #EXT-X-I-FRAME-STREAM-INF). This avoids executing three
-             * redundant .includes() string searches on every non-variant tag line (e.g.
-             * #EXT-X-TARGETDURATION, #EXT-X-MEDIA-SEQUENCE, #EXT-X-VERSION, #EXTINF) during
-             * manifest processing.
+             * Performance optimization: Use offset-based prefix checking (startsWith('EXT-X-', 1))
+             * to skip re-evaluating the leading '#' character when matching variant tags in manifests.
+             * This avoids executing redundant string searches on non-variant tag lines during manifest processing.
              */
             if (
-              trimmed.startsWith('#EXT-X-STREAM-INF') ||
-              trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF')
+              trimmed.startsWith('EXT-X-STREAM-INF', 1) ||
+              trimmed.startsWith('EXT-X-I-FRAME-STREAM-INF', 1)
             ) {
               tagsToLog.push(trimmed);
             }
