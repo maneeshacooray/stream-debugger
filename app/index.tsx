@@ -1201,25 +1201,38 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
   const [autoScroll, setAutoScroll] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
-  // Performance optimization: Combine stats calculation and filtering with early continue guards.
-  // Using early returns short-circuits evaluation on non-matching logs immediately,
-  // avoiding unneeded string comparisons and boolean flags during high-frequency log stream updates.
-  const { logStats, filteredLogs } = useMemo(() => {
+  /**
+   * Performance optimization: Calculate logStats separately dependent strictly on [logs].
+   * This eliminates recalculating log level totals across all log entries when typing
+   * text filters or switching category tabs.
+   */
+  const logStats = useMemo(() => {
     const stats = { total: logs.length, error: 0, warn: 0, info: 0, debug: 0 };
-    const filtered: LogEntry[] = [];
+    for (let i = 0; i < logs.length; i++) {
+      stats[logs[i].level]++;
+    }
+    return stats;
+  }, [logs]);
+
+  /**
+   * Performance optimization: Fast-path return when no filters are active.
+   * When categoryFilter === 'all' and filter is empty, return original logs array reference
+   * directly to skip O(N) array allocation and loop passes when viewing default unfiltered logs.
+   */
+  const filteredLogs = useMemo(() => {
     const lowerFilter = filter.toLowerCase();
     const hasCategoryFilter = categoryFilter !== 'all';
 
-    for (const log of logs) {
-      // Update totals (always based on the full log set)
-      stats[log.level]++;
+    if (!hasCategoryFilter && !lowerFilter) {
+      return logs;
+    }
 
-      // Skip non-matching category immediately
+    const filtered: LogEntry[] = [];
+    for (let i = 0; i < logs.length; i++) {
+      const log = logs[i];
       if (hasCategoryFilter && log.category !== categoryFilter) {
         continue;
       }
-
-      // Skip non-matching text query immediately using pre-calculated lowercase message
       if (lowerFilter && !(
         log.messageLower.includes(lowerFilter) ||
         log.category.includes(lowerFilter) ||
@@ -1227,11 +1240,10 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
       )) {
         continue;
       }
-
       filtered.push(log);
     }
 
-    return { logStats: stats, filteredLogs: filtered };
+    return filtered;
   }, [logs, filter, categoryFilter]);
 
   /**

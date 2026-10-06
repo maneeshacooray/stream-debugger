@@ -45,3 +45,9 @@
 **Learning:** In high-frequency time update callbacks (e.g. 500ms `timeUpdate` listeners), evaluating scalar player getters (`player.duration`, `player.isLive`, `player.playbackRate`, `player.volume`, `player.muted`) multiple times per tick for state comparison and payload construction triggers redundant getter evaluations and underlying DOM property queries on every tick.
 
 **Action:** Assign getter outputs to local variables (`const duration = player.duration; ...`) at the start of the callback pass to reuse evaluated values across equality checks and state payload construction.
+
+## 2026-08-01 - Decoupling Collection Statistics from High-Frequency Search Filtering
+
+**Learning:** Calculating collection-wide statistics (such as log category totals) inside the same `useMemo` pass as text filtering forces the statistics loop to re-evaluate across all elements on every search input keystroke. Furthermore, filtering without an unfiltered fast-path allocates transient target arrays even when no search filters are active.
+
+**Action:** Separate collection statistics into a dedicated `useMemo` dependent strictly on the source collection, and add a fast-path return (`if (!filter) return source`) to skip array allocations and loop execution when viewing unfiltered items.
