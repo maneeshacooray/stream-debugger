@@ -211,6 +211,11 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
          * with manual index parsing using substring() and indexOf(). This completely
          * eliminates regex engine execution overhead, match group arrays, and
          * dynamic heap allocations, achieving O(1) garbage collection pressure.
+         *
+         * Performance optimization: Conditionally bypass segment title string slicing
+         * (`value.substring(commaIdx + 1)`) when the segment rendering cap
+         * (`result.segments.length >= 20`) is already reached. In large VOD manifests
+         * with thousands of segments, this skips thousands of transient string allocations.
          */
         result.type = 'media';
         const value = line.substring(8);
@@ -218,7 +223,7 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
         let durationStr = value;
         if (commaIdx !== -1) {
           durationStr = value.substring(0, commaIdx);
-          currentSegmentTitle = value.substring(commaIdx + 1) || undefined;
+          currentSegmentTitle = result.segments.length < 20 ? (value.substring(commaIdx + 1) || undefined) : undefined;
         } else {
           currentSegmentTitle = undefined;
         }
