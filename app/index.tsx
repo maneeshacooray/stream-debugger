@@ -1638,13 +1638,14 @@ export default function StreamDebugger() {
            */
           if (trimmed.charCodeAt(0) === 35 /* '#' */) {
             /**
-             * Performance optimization: Use offset-based prefix checking (startsWith('EXT-X-', 1))
-             * to skip re-evaluating the leading '#' character when matching variant tags in manifests.
-             * This avoids executing redundant string searches on non-variant tag lines during manifest processing.
+             * Performance optimization: Guard variant stream tag checks behind a shared
+             * trimmed.startsWith('EXT-X-', 1) prefix check to avoid running multiple long
+             * string comparisons on thousands of #EXTINF: segment tag lines.
              */
             if (
-              trimmed.startsWith('EXT-X-STREAM-INF', 1) ||
-              trimmed.startsWith('EXT-X-I-FRAME-STREAM-INF', 1)
+              trimmed.startsWith('EXT-X-', 1) &&
+              (trimmed.startsWith('STREAM-INF', 7) ||
+               trimmed.startsWith('I-FRAME-STREAM-INF', 7))
             ) {
               tagsToLog.push(trimmed);
             }

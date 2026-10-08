@@ -162,9 +162,32 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
   let currentSegmentTitle: string | undefined;
   let hasDiscontinuity = false;
   let totalDuration = 0;
-  let isFirstLine = true;
 
-  for (let i = 0; i < lines.length; i++) {
+  /**
+   * Performance optimization: Validate the #EXTM3U header on the first non-empty line
+   * before entering the main loop. This eliminates evaluating an `isFirstLine` boolean check
+   * on every single line iteration across thousands of manifest lines.
+   */
+  let startIdx = 0;
+  while (startIdx < lines.length) {
+    const rawLine = lines[startIdx];
+    startIdx++;
+    const len = rawLine.length;
+    if (len === 0) continue;
+
+    let line = rawLine;
+    if (rawLine.charCodeAt(0) <= 32 || rawLine.charCodeAt(len - 1) <= 32) {
+      line = rawLine.trim();
+      if (!line) continue;
+    }
+
+    if (!line.startsWith('#EXTM3U')) {
+      return result;
+    }
+    break;
+  }
+
+  for (let i = startIdx; i < lines.length; i++) {
     const rawLine = lines[i];
     const len = rawLine.length;
     if (len === 0) continue;
@@ -179,15 +202,6 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
     if (rawLine.charCodeAt(0) <= 32 || rawLine.charCodeAt(len - 1) <= 32) {
       line = rawLine.trim();
       if (!line) continue;
-    }
-
-    // Check if it's an HLS playlist
-    if (isFirstLine) {
-      isFirstLine = false;
-      if (!line.startsWith('#EXTM3U')) {
-        return result;
-      }
-      continue;
     }
 
     /**
