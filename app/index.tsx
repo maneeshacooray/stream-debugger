@@ -980,11 +980,21 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
 
     const listener = player.addListener('timeUpdate', ({ currentTime, bufferedPosition, currentOffsetFromLive }: { currentTime: number; bufferedPosition: number; currentOffsetFromLive: number | null }) => {
       setVideoStats(prev => {
+        /**
+         * Performance optimization: Use a 0.1s threshold check for currentOffsetFromLive
+         * matching the display precision (.toFixed(1)). Comparing continuous raw floats with
+         * strict inequality (!==) allowed sub-millisecond latency jitter to bypass the 0.1s
+         * threshold guard and trigger unnecessary React state updates and re-renders every 500ms
+         * when rendered text remained identical.
+         */
+        const offsetChanged = (prev.currentOffsetFromLive === null) !== (currentOffsetFromLive === null) ||
+          (currentOffsetFromLive !== null && prev.currentOffsetFromLive !== null && Math.abs(prev.currentOffsetFromLive - currentOffsetFromLive) > 0.1);
+
         // Optimization: Check if fast-changing values actually changed significantly (time updates are 500ms)
         // or if player state changed. We use 0.1s threshold for time.
         const timeChanged = Math.abs(prev.currentTime - currentTime) > 0.1 ||
           Math.abs(prev.bufferedPosition - bufferedPosition) > 0.1 ||
-          prev.currentOffsetFromLive !== currentOffsetFromLive;
+          offsetChanged;
 
         /**
          * Performance optimization: Assign getter outputs to local variables

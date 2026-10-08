@@ -51,3 +51,9 @@
 **Learning:** Calculating collection-wide statistics (such as log category totals) inside the same `useMemo` pass as text filtering forces the statistics loop to re-evaluate across all elements on every search input keystroke. Furthermore, filtering without an unfiltered fast-path allocates transient target arrays even when no search filters are active.
 
 **Action:** Separate collection statistics into a dedicated `useMemo` dependent strictly on the source collection, and add a fast-path return (`if (!filter) return source`) to skip array allocations and loop execution when viewing unfiltered items.
+
+## 2026-08-01 - Threshold Checks for Floating-Point Offset State Updates
+
+**Learning:** In high-frequency player event callbacks (like 500ms `timeUpdate`), comparing continuous floating-point latency values (`currentOffsetFromLive`) with strict inequality (`!==`) allowed sub-millisecond float fluctuations to constantly bypass the state update guard. This triggered redundant React state updates and re-renders every 500ms even when the rendered UI text (`.toFixed(1)`) remained unchanged.
+
+**Action:** Apply a display-precision threshold check (`Math.abs(prev - next) > 0.1`) alongside null-state checks in high-frequency float state updates.
