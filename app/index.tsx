@@ -1184,6 +1184,42 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
 // ============================================================================
 // Logs Tab Content Component
 // ============================================================================
+interface CategoryTabItemProps {
+  cat: FilterCategory;
+  label: string;
+  isActive: boolean;
+  onSelect: (cat: FilterCategory) => void;
+  styles: any;
+}
+
+/**
+ * Performance optimization: Isolated memoized CategoryTabItem component to prevent
+ * inline function allocations during render passes of LogsTabContent when switching
+ * category tabs or updating logs.
+ */
+const CategoryTabItem = memo(function CategoryTabItem({
+  cat,
+  label,
+  isActive,
+  onSelect,
+  styles,
+}: CategoryTabItemProps) {
+  const handlePress = useCallback(() => {
+    onSelect(cat);
+  }, [onSelect, cat]);
+
+  return (
+    <Pressable
+      style={[styles.categoryTab, isActive && styles.categoryTabActive]}
+      onPress={handlePress}
+    >
+      <Text style={[styles.categoryTabText, isActive && styles.categoryTabTextActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+});
+
 interface LogsTabContentProps {
   clearLogs: () => void;
   theme: Theme;
@@ -1257,10 +1293,14 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
   }, [logs, filter, categoryFilter]);
 
   /**
-   * Performance optimization: Memoize the visible slice of logs to prevent redundant
-   * array allocations on every render of LogsTabContent (e.g. during auto-scroll).
+   * Performance optimization: Fast-path return when filtered log count is <= 100.
+   * Directly returning filteredLogs skips unnecessary array allocation and copying
+   * from .slice(-100) when the list contains 100 or fewer entries.
    */
-  const visibleLogs = useMemo(() => filteredLogs.slice(-100), [filteredLogs]);
+  const visibleLogs = useMemo(() => {
+    if (filteredLogs.length <= 100) return filteredLogs;
+    return filteredLogs.slice(-100);
+  }, [filteredLogs]);
 
   // Auto-scroll for ScrollView
   const lastLogCountRef = useRef(0);
@@ -1308,18 +1348,6 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
     });
   }, []);
 
-  const renderCategoryTab = (cat: FilterCategory, label: string) => (
-    <Pressable
-      key={cat}
-      style={[styles.categoryTab, categoryFilter === cat && styles.categoryTabActive]}
-      onPress={() => setCategoryFilter(cat)}
-    >
-      <Text style={[styles.categoryTabText, categoryFilter === cat && styles.categoryTabTextActive]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-
   return (
     <>
       {/* Stats Bar */}
@@ -1347,10 +1375,10 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
 
       {/* Category Tabs */}
       <View style={styles.categoryTabs}>
-        {renderCategoryTab('all', 'All')}
-        {renderCategoryTab('http', 'HTTP')}
-        {renderCategoryTab('player', 'Player')}
-        {renderCategoryTab('system', 'System')}
+        <CategoryTabItem cat="all" label="All" isActive={categoryFilter === 'all'} onSelect={setCategoryFilter} styles={styles} />
+        <CategoryTabItem cat="http" label="HTTP" isActive={categoryFilter === 'http'} onSelect={setCategoryFilter} styles={styles} />
+        <CategoryTabItem cat="player" label="Player" isActive={categoryFilter === 'player'} onSelect={setCategoryFilter} styles={styles} />
+        <CategoryTabItem cat="system" label="System" isActive={categoryFilter === 'system'} onSelect={setCategoryFilter} styles={styles} />
       </View>
 
       {/* Log Controls */}

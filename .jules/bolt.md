@@ -57,3 +57,9 @@
 **Learning:** In high-frequency player event callbacks (like 500ms `timeUpdate`), comparing continuous floating-point latency values (`currentOffsetFromLive`) with strict inequality (`!==`) allowed sub-millisecond float fluctuations to constantly bypass the state update guard. This triggered redundant React state updates and re-renders every 500ms even when the rendered UI text (`.toFixed(1)`) remained unchanged.
 
 **Action:** Apply a display-precision threshold check (`Math.abs(prev - next) > 0.1`) alongside null-state checks in high-frequency float state updates.
+
+## 2026-08-01 - Fast-Path Length Guard for Array Slicing in Memoized List Views
+
+**Learning:** Calling `.slice(-N)` unconditionally in a `useMemo` computation when slicing a list for display creates a new intermediate array instance on every render pass, even when the array length is already smaller than N.
+
+**Action:** Add a fast-path length check (`if (array.length <= N) return array;`) before calling `.slice(-N)`. This preserves the original array reference and avoids unnecessary shallow array allocations when the list size is within the limit.
