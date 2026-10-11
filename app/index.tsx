@@ -1257,10 +1257,14 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
   }, [logs, filter, categoryFilter]);
 
   /**
-   * Performance optimization: Memoize the visible slice of logs to prevent redundant
-   * array allocations on every render of LogsTabContent (e.g. during auto-scroll).
+   * Performance optimization: Memoize the visible slice of logs with a fast-path length guard.
+   * If filteredLogs length is within the display limit (<= 100), returning filteredLogs directly
+   * bypasses .slice() array allocation and copying on every log update.
    */
-  const visibleLogs = useMemo(() => filteredLogs.slice(-100), [filteredLogs]);
+  const visibleLogs = useMemo(() => {
+    if (filteredLogs.length <= 100) return filteredLogs;
+    return filteredLogs.slice(-100);
+  }, [filteredLogs]);
 
   // Auto-scroll for ScrollView
   const lastLogCountRef = useRef(0);
