@@ -175,53 +175,93 @@ const formatTime = (seconds: number): string => {
   return formatted;
 };
 
+interface CodecInfo {
+  name: string;
+  fullName: string;
+  color: string;
+  badgeStyle: { backgroundColor: string; borderColor: string };
+  badgeTextStyle: { color: string };
+}
+
 // Bounded cache for parseCodecName to eliminate dynamic string lowercasing,
 // repeated .includes() string searches, and object allocations on video track updates.
-const codecInfoCache = new Map<string, { name: string; fullName: string; color: string }>();
+const codecInfoCache = new Map<string, CodecInfo>();
 
-const parseCodecName = (mimeType: string | null, theme: Theme): { name: string; fullName: string; color: string } => {
-  if (!mimeType) return { name: '--', fullName: 'Unknown', color: theme.text.muted };
+const parseCodecName = (mimeType: string | null, theme: Theme): CodecInfo => {
+  if (!mimeType) {
+    return {
+      name: '--',
+      fullName: 'Unknown',
+      color: theme.text.muted,
+      badgeStyle: { backgroundColor: theme.text.muted + '25', borderColor: theme.text.muted },
+      badgeTextStyle: { color: theme.text.muted },
+    };
+  }
 
   /**
-   * Performance optimization: Cache parsed codec metadata by mimeType string.
-   * This avoids dynamic .toLowerCase() string allocations, 10+ .includes() string search
-   * evaluations, and result object instantiations on codec parsing calls.
+   * Performance optimization: Cache parsed codec metadata and pre-allocated badge style
+   * objects by mimeType string. This avoids dynamic .toLowerCase() string allocations,
+   * 10+ .includes() string search evaluations, and inline style object instantiations on codec parsing calls.
    */
   const cacheKey = `${mimeType}_${theme.isDark ? 'dark' : 'light'}`;
   const cached = codecInfoCache.get(cacheKey);
   if (cached) return cached;
 
   const mime = mimeType.toLowerCase();
-  let result: { name: string; fullName: string; color: string };
+  let name = '';
+  let fullName = '';
+  let color = theme.text.secondary;
 
   // H.265 / HEVC
   if (mime.includes('hevc') || mime.includes('hvc1') || mime.includes('hev1') || mime.includes('h265') || mime.includes('x265')) {
-    result = { name: 'H.265', fullName: 'HEVC (H.265)', color: theme.accent.success };
+    name = 'H.265';
+    fullName = 'HEVC (H.265)';
+    color = theme.accent.success;
   }
   // H.264 / AVC
   else if (mime.includes('avc') || mime.includes('h264') || mime.includes('x264')) {
-    result = { name: 'H.264', fullName: 'AVC (H.264)', color: theme.accent.info };
+    name = 'H.264';
+    fullName = 'AVC (H.264)';
+    color = theme.accent.info;
   }
   // VP9
   else if (mime.includes('vp9') || mime.includes('vp09')) {
-    result = { name: 'VP9', fullName: 'VP9', color: theme.accent.warning };
+    name = 'VP9';
+    fullName = 'VP9';
+    color = theme.accent.warning;
   }
   // VP8
   else if (mime.includes('vp8')) {
-    result = { name: 'VP8', fullName: 'VP8', color: theme.accent.warning };
+    name = 'VP8';
+    fullName = 'VP8';
+    color = theme.accent.warning;
   }
   // AV1
   else if (mime.includes('av1') || mime.includes('av01')) {
-    result = { name: 'AV1', fullName: 'AV1', color: '#ff6b9d' };
+    name = 'AV1';
+    fullName = 'AV1';
+    color = '#ff6b9d';
   }
   // MPEG-4
   else if (mime.includes('mp4v') || mime.includes('mpeg4')) {
-    result = { name: 'MPEG-4', fullName: 'MPEG-4 Part 2', color: theme.text.secondary };
+    name = 'MPEG-4';
+    fullName = 'MPEG-4 Part 2';
+    color = theme.text.secondary;
   }
   else {
     // Return the raw mime type if unknown
-    result = { name: mimeType.split('/').pop() || mimeType, fullName: mimeType, color: theme.text.secondary };
+    name = mimeType.split('/').pop() || mimeType;
+    fullName = mimeType;
+    color = theme.text.secondary;
   }
+
+  const result: CodecInfo = {
+    name,
+    fullName,
+    color,
+    badgeStyle: { backgroundColor: color + '25', borderColor: color },
+    badgeTextStyle: { color },
+  };
 
   // Bound cache to prevent memory leaks in extreme sessions
   if (codecInfoCache.size >= 100) {
@@ -774,7 +814,7 @@ interface VideoMetadataStatsProps {
     frameRate: number | null;
     mimeType: string | null;
   };
-  codecInfo: { name: string; fullName: string; color: string };
+  codecInfo: CodecInfo;
   theme: Theme;
   styles: any;
 }
@@ -809,8 +849,8 @@ const VideoMetadataStats = memo(function VideoMetadataStats({ videoTrack, codecI
         <View style={[styles.videoStatBox, styles.codecBox]}>
           <Text style={styles.videoStatLabel}>Codec</Text>
           <View style={styles.codecBadgeRow}>
-            <View style={[styles.codecBadge, { backgroundColor: codecInfo.color + '25', borderColor: codecInfo.color }]}>
-              <Text style={[styles.codecBadgeText, { color: codecInfo.color }]}>
+            <View style={[styles.codecBadge, codecInfo.badgeStyle]}>
+              <Text style={[styles.codecBadgeText, codecInfo.badgeTextStyle]}>
                 {codecInfo.name}
               </Text>
             </View>
@@ -853,7 +893,7 @@ const VideoMetadataStats = memo(function VideoMetadataStats({ videoTrack, codecI
       {/* Full Codec Info Row */}
       {videoTrack.mimeType && (
         <View style={styles.videoStatsRow}>
-          <View style={[styles.videoStatBox, { flex: 1 }]}>
+          <View style={styles.videoStatBoxFlex1}>
             <Text style={styles.videoStatLabel}>Full Codec</Text>
             <Text style={[styles.videoStatValue, styles.videoStatValueSmall]} numberOfLines={1}>
               {codecInfo.fullName} - {videoTrack.mimeType}
@@ -915,7 +955,7 @@ interface AudioTrackStatsProps {
 const AudioTrackStats = memo(function AudioTrackStats({ audioTrack, styles }: AudioTrackStatsProps) {
   return (
     <View style={styles.videoStatsRow}>
-      <View style={[styles.videoStatBox, { flex: 1 }]}>
+      <View style={styles.videoStatBoxFlex1}>
         <Text style={styles.videoStatLabel}>Audio</Text>
         <Text style={styles.videoStatValue}>
           {audioTrack.label} ({audioTrack.language})
@@ -1132,11 +1172,11 @@ const InfoTabContent = memo(function InfoTabContent({ player, streamUrl, theme, 
               <View style={styles.videoStatsRow}>
                 <View style={styles.videoStatBox}>
                   <Text style={styles.videoStatLabel}>Latency</Text>
-                  <Text style={[styles.videoStatValue, { color: theme.accent.warning }]}>
+                  <Text style={[styles.videoStatValue, styles.latencyValue]}>
                     {videoStats.currentOffsetFromLive !== null ? `${videoStats.currentOffsetFromLive.toFixed(1)}s` : '--'}
                   </Text>
                 </View>
-                <View style={[styles.videoStatBox, { flex: 2 }]}>
+                <View style={styles.videoStatBoxFlex2}>
                   <Text style={styles.videoStatLabel}>Buffer Ahead</Text>
                   <Text style={styles.videoStatValue}>
                     {(videoStats.bufferedPosition - videoStats.currentTime).toFixed(1)}s
@@ -1453,7 +1493,7 @@ const LogsTabContent = memo(function LogsTabContent({ clearLogs, theme, styles, 
       }
 
       {/* Bottom padding for tab bar */}
-      <View style={{ height: 80 }} />
+      <View style={styles.bottomSpacer} />
     </>
   );
 });
@@ -2178,6 +2218,30 @@ const createStyles = (theme: Theme) => {
     overflow: 'hidden', // Ensure video and other content don't leak out
     borderWidth: 1,
     borderColor: theme.border,
+  },
+  videoStatBoxFlex1: {
+    flex: 1,
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  videoStatBoxFlex2: {
+    flex: 2,
+    backgroundColor: theme.bg.tertiary,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  latencyValue: {
+    color: theme.accent.warning,
+  },
+  bottomSpacer: {
+    height: 80,
   },
   videoWrapper: {
     aspectRatio: 16 / 9,
