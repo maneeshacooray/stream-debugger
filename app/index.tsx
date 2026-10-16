@@ -38,6 +38,7 @@ import { categoryColors, logColors, Theme, useAppTheme } from '../constants/appT
 // Constants
 // ============================================================================
 const MAX_LOGS = 500;
+const FULLSCREEN_OPTIONS = { enable: false };
 
 const UPPERCASE_LEVELS = {
   info: 'INFO',
@@ -417,7 +418,7 @@ const Header = memo(function Header({
           {!isLargeScreen && <Ionicons name={showPlayer ? 'chevron-up' : 'chevron-down'} size={14} color={statusColor} />}
         </Pressable>
         <Pressable
-          style={[styles.settingsBtn, multiViewMode && { backgroundColor: theme.accent.primary + '20', borderRadius: 8 }]}
+          style={[styles.settingsBtn, multiViewMode && styles.multiViewBtnActive]}
           onPress={onToggleMultiView}
         >
           <Ionicons
@@ -689,7 +690,7 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
           style={StyleSheet.absoluteFill}
           player={player}
           allowsPictureInPicture
-          fullscreenOptions={{ enable: false }}
+          fullscreenOptions={FULLSCREEN_OPTIONS}
           contentFit="contain"
           nativeControls // Show the browser/OS's own native controls at all times
         />
@@ -704,7 +705,7 @@ const ZoomableVideo = memo(function ZoomableVideo({ player, enabled, theme, styl
           style={StyleSheet.absoluteFill}
           player={player}
           allowsPictureInPicture
-          fullscreenOptions={{ enable: false }}
+          fullscreenOptions={FULLSCREEN_OPTIONS}
           contentFit="contain"
           nativeControls // Show the browser/OS's own native controls at all times
         />
@@ -2205,6 +2206,10 @@ const createStyles = (theme: Theme) => {
   },
   settingsBtn: {
     padding: 6,
+  },
+  multiViewBtnActive: {
+    backgroundColor: theme.accent.primary + '20',
+    borderRadius: 8,
   },
   playerSection: {
     padding: 12,
