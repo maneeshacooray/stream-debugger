@@ -32,7 +32,7 @@ import { StreamMetadata } from '../components/StreamMetadata';
 
 // Theme & About
 import { ABOUT } from '../constants/about';
-import { categoryColors, logColors, Theme, useAppTheme } from '../constants/appTheme';
+import { categoryColors, darkTheme, lightTheme, logColors, Theme, useAppTheme } from '../constants/appTheme';
 
 // ============================================================================
 // Constants
@@ -188,15 +188,27 @@ interface CodecInfo {
 // repeated .includes() string searches, and object allocations on video track updates.
 const codecInfoCache = new Map<string, CodecInfo>();
 
+// Pre-allocated static CodecInfo objects for unknown/null MIME types to eliminate
+// dynamic heap allocations when codec metadata is unavailable or empty.
+const UNKNOWN_CODEC_INFO_DARK: CodecInfo = {
+  name: '--',
+  fullName: 'Unknown',
+  color: darkTheme.text.muted,
+  badgeStyle: { backgroundColor: darkTheme.text.muted + '25', borderColor: darkTheme.text.muted },
+  badgeTextStyle: { color: darkTheme.text.muted },
+};
+
+const UNKNOWN_CODEC_INFO_LIGHT: CodecInfo = {
+  name: '--',
+  fullName: 'Unknown',
+  color: lightTheme.text.muted,
+  badgeStyle: { backgroundColor: lightTheme.text.muted + '25', borderColor: lightTheme.text.muted },
+  badgeTextStyle: { color: lightTheme.text.muted },
+};
+
 const parseCodecName = (mimeType: string | null, theme: Theme): CodecInfo => {
   if (!mimeType) {
-    return {
-      name: '--',
-      fullName: 'Unknown',
-      color: theme.text.muted,
-      badgeStyle: { backgroundColor: theme.text.muted + '25', borderColor: theme.text.muted },
-      badgeTextStyle: { color: theme.text.muted },
-    };
+    return theme.isDark ? UNKNOWN_CODEC_INFO_DARK : UNKNOWN_CODEC_INFO_LIGHT;
   }
 
   /**
