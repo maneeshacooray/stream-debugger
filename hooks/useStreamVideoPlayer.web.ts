@@ -35,6 +35,9 @@ type PlayerStatus = 'idle' | 'loading' | 'readyToPlay' | 'error';
 
 type Listener = (payload: any) => void;
 
+// Module-level constant regex to avoid regex compilation and instantiation overhead on every loadSource call
+const LOOKS_LIKE_HLS_REGEX = /\.m3u8(\?|$)/i;
+
 export class WebStreamVideoPlayer {
   private uri: string | null;
   private video: HTMLVideoElement | null = null;
@@ -359,7 +362,7 @@ export class WebStreamVideoPlayer {
 
     this.setStatus('loading');
 
-    const looksLikeHls = /\.m3u8(\?|$)/i.test(this.uri);
+    const looksLikeHls = LOOKS_LIKE_HLS_REGEX.test(this.uri);
     const hasNativeHlsSupport = video.canPlayType('application/vnd.apple.mpegurl') !== '';
 
     if (looksLikeHls && !hasNativeHlsSupport && Hls.isSupported()) {
