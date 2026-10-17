@@ -306,13 +306,40 @@ export class WebStreamVideoPlayer {
     this.emit('statusChange', { status, oldStatus, error });
   }
 
+  /**
+   * Performance optimization: Cache video element DOM properties (currentTime, duration,
+   * buffered) in local variables within emitTimeUpdate. Reusing currentTime in
+   * computeLiveOffset eliminates redundant HTMLVideoElement DOM getter queries during
+   * high-frequency (500ms) time update passes.
+   */
   private emitTimeUpdate = () => {
-    if (!this.video) return;
+    const video = this.video;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const duration = video.duration;
+    const isLive = !Number.isFinite(duration);
+
+    let bufferedPosition = 0;
+    const buffered = video.buffered;
+    if (buffered && buffered.length > 0) {
+      try {
+        bufferedPosition = buffered.end(buffered.length - 1);
+      } catch {
+        bufferedPosition = 0;
+      }
+    }
+
+    let currentOffsetFromLive: number | null = null;
+    if (isLive) {
+      currentOffsetFromLive = this.computeLiveOffset(currentTime);
+    }
+
     this.emit('timeUpdate', {
-      currentTime: this.currentTime,
+      currentTime,
       currentLiveTimestamp: null,
-      currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
-      bufferedPosition: this.bufferedPosition,
+      currentOffsetFromLive,
+      bufferedPosition,
     });
   };
 
@@ -335,9 +362,9 @@ export class WebStreamVideoPlayer {
     }
   }
 
-  private computeLiveOffset(): number | null {
+  private computeLiveOffset(currentTime = this.currentTime): number | null {
     if (this.hls?.liveSyncPosition != null && this.video) {
-      return Math.max(0, this.hls.liveSyncPosition - this.video.currentTime);
+      return Math.max(0, this.hls.liveSyncPosition - currentTime);
     }
     return null;
   }

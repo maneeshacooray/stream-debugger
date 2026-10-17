@@ -63,3 +63,9 @@
 **Learning:** Calling `.slice(-N)` unconditionally in a `useMemo` computation when slicing a list for display creates a new intermediate array instance on every render pass, even when the array length is already smaller than N.
 
 **Action:** Add a fast-path length check (`if (array.length <= N) return array;`) before calling `.slice(-N)`. This preserves the original array reference and avoids unnecessary shallow array allocations when the list size is within the limit.
+
+## 2026-08-01 - Single-Pass DOM Property Evaluation in High-Frequency Player Callbacks
+
+**Learning:** Evaluating `HTMLVideoElement` properties (`video.currentTime`, `video.duration`, `video.buffered`) across multiple getters and sub-helper calls in high-frequency event emitters (like 500ms `emitTimeUpdate` ticks) causes multiple redundant native DOM getter queries per tick.
+
+**Action:** Read `video` properties once into local variables per tick (`currentTime`, `duration`, `buffered`), and pass `currentTime` directly into sub-helpers (`computeLiveOffset(currentTime)`) to eliminate redundant DOM getter queries during playback.
