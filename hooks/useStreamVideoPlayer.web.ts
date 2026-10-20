@@ -306,13 +306,40 @@ export class WebStreamVideoPlayer {
     this.emit('statusChange', { status, oldStatus, error });
   }
 
+  /**
+   * Performance optimization: Evaluate HTMLVideoElement properties (currentTime, duration,
+   * buffered) once into local variables per tick and pass currentTime directly to live offset
+   * calculations. This eliminates redundant DOM getter queries and getter function call
+   * overhead during high-frequency (500ms) playback update passes.
+   */
   private emitTimeUpdate = () => {
-    if (!this.video) return;
+    const video = this.video;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const rawDuration = video.duration;
+    const isLive = !Number.isFinite(rawDuration);
+
+    let currentOffsetFromLive: number | null = null;
+    if (isLive && this.hls?.liveSyncPosition != null) {
+      currentOffsetFromLive = Math.max(0, this.hls.liveSyncPosition - currentTime);
+    }
+
+    let bufferedPosition = 0;
+    const buffered = video.buffered;
+    if (buffered && buffered.length > 0) {
+      try {
+        bufferedPosition = buffered.end(buffered.length - 1);
+      } catch {
+        bufferedPosition = 0;
+      }
+    }
+
     this.emit('timeUpdate', {
-      currentTime: this.currentTime,
+      currentTime,
       currentLiveTimestamp: null,
-      currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
-      bufferedPosition: this.bufferedPosition,
+      currentOffsetFromLive,
+      bufferedPosition,
     });
   };
 
