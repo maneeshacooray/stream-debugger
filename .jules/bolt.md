@@ -63,3 +63,9 @@
 **Learning:** Calling `.slice(-N)` unconditionally in a `useMemo` computation when slicing a list for display creates a new intermediate array instance on every render pass, even when the array length is already smaller than N.
 
 **Action:** Add a fast-path length check (`if (array.length <= N) return array;`) before calling `.slice(-N)`. This preserves the original array reference and avoids unnecessary shallow array allocations when the list size is within the limit.
+
+## 2026-08-01 - Single-Pass Attribute Parsing for HLS Master Playlists
+
+**Learning:** Executing multiple `indexOf` searches for individual attribute keys (`BANDWIDTH=`, `RESOLUTION=`, `CODECS=`, `FRAME-RATE=`) over `#EXT-X-STREAM-INF:` attribute strings causes repeated linear string scans across the same line, with redundant searches for missing attributes.
+
+**Action:** Parse variant attribute lists in a single linear pass using key/value delimiter index scanning to extract all variant properties in O(N) time with zero redundant string passes.
