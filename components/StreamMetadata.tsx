@@ -65,41 +65,57 @@ interface Segment {
 // Helper Functions
 // ============================================================================
 /**
- * Performance optimization: Extract HLS attribute values directly via manual
- * index-based substring parsing (`indexOf` and `substring`) instead of regexes.
- * This completely eliminates regex engine execution overhead, match group arrays,
- * and dynamic heap allocations during master playlist parsing.
+ * Performance optimization: Extract variant attributes in a single pass over
+ * the attribute list string rather than executing multiple linear search passes
+ * (`indexOf`) per attribute key. This eliminates repeated full-string scanning
+ * and avoids substring collision checks on master playlists.
  */
-function extractAttributeValue(attrs: string, key: string): string | null {
-  const keyLen = key.length;
-  let start = 0;
-  while (start < attrs.length) {
-    const idx = attrs.indexOf(key, start);
-    if (idx === -1) return null;
+function parseStreamInfAttributes(attrs: string, variant: Partial<VariantStream>): void {
+  let pos = 0;
+  const len = attrs.length;
+  while (pos < len) {
+    const eqIdx = attrs.indexOf('=', pos);
+    if (eqIdx === -1) break;
 
-    // Guard against substring collisions (e.g., BANDWIDTH vs AVERAGE-BANDWIDTH)
-    if (idx === 0 || attrs.charCodeAt(idx - 1) === 44 /* ',' */ || attrs.charCodeAt(idx - 1) === 32 /* ' ' */) {
-      const valueStart = idx + keyLen;
-      if (valueStart >= attrs.length) return null;
+    const key = attrs.substring(pos, eqIdx).trim();
+    let valStart = eqIdx + 1;
+    let valEnd = valStart;
 
-      // Quoted attribute value (e.g. CODECS="avc1.4d401f,mp4a.40.2")
-      if (attrs.charCodeAt(valueStart) === 34 /* '"' */) {
-        const endQuote = attrs.indexOf('"', valueStart + 1);
-        if (endQuote !== -1) {
-          return attrs.substring(valueStart + 1, endQuote);
-        }
+    if (valStart < len && attrs.charCodeAt(valStart) === 34 /* '"' */) {
+      valStart++;
+      const endQuote = attrs.indexOf('"', valStart);
+      if (endQuote !== -1) {
+        valEnd = endQuote;
+        pos = endQuote + 1;
+        if (pos < len && attrs.charCodeAt(pos) === 44 /* ',' */) pos++;
       } else {
-        // Unquoted attribute value (e.g. BANDWIDTH=1280000)
-        let commaIdx = attrs.indexOf(',', valueStart);
-        if (commaIdx === -1) {
-          commaIdx = attrs.length;
-        }
-        return attrs.substring(valueStart, commaIdx);
+        valEnd = len;
+        pos = len;
+      }
+    } else {
+      const commaIdx = attrs.indexOf(',', valStart);
+      if (commaIdx !== -1) {
+        valEnd = commaIdx;
+        pos = commaIdx + 1;
+      } else {
+        valEnd = len;
+        pos = len;
       }
     }
-    start = idx + keyLen;
+
+    const val = attrs.substring(valStart, valEnd);
+    if (key === 'BANDWIDTH') {
+      const bw = parseInt(val, 10);
+      if (!isNaN(bw)) variant.bandwidth = bw;
+    } else if (key === 'RESOLUTION') {
+      variant.resolution = val;
+    } else if (key === 'CODECS') {
+      variant.codecs = val;
+    } else if (key === 'FRAME-RATE') {
+      const fr = parseFloat(val);
+      if (!isNaN(fr)) variant.frameRate = fr;
+    }
   }
-  return null;
 }
 const bitrateCache = new Map<number, string>();
 
@@ -261,38 +277,13 @@ function parseHLSPlaylist(content: string, url: string): ParsedPlaylist {
          */
         if (line.startsWith('STREAM-INF:', 7)) {
           result.type = 'master';
-          const attrs = line.substring(18);
           currentVariant = {};
 
           /**
-           * Performance optimization: Use manual index-based string extraction
-           * instead of regex matching.
+           * Performance optimization: Parse all variant attributes in a single pass
+           * over the attribute string using parseStreamInfAttributes.
            */
-          const bwVal = extractAttributeValue(attrs, 'BANDWIDTH=');
-          if (bwVal !== null) {
-            const bw = parseInt(bwVal, 10);
-            if (!isNaN(bw)) {
-              currentVariant.bandwidth = bw;
-            }
-          }
-
-          const resVal = extractAttributeValue(attrs, 'RESOLUTION=');
-          if (resVal !== null) {
-            currentVariant.resolution = resVal;
-          }
-
-          const codecVal = extractAttributeValue(attrs, 'CODECS=');
-          if (codecVal !== null) {
-            currentVariant.codecs = codecVal;
-          }
-
-          const frVal = extractAttributeValue(attrs, 'FRAME-RATE=');
-          if (frVal !== null) {
-            const fr = parseFloat(frVal);
-            if (!isNaN(fr)) {
-              currentVariant.frameRate = fr;
-            }
-          }
+          parseStreamInfAttributes(line.substring(18), currentVariant);
         }
         // Version
         else if (line.startsWith('VERSION:', 7)) {
