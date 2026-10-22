@@ -120,7 +120,11 @@ export class WebStreamVideoPlayer {
   }
 
   get bufferedPosition(): number {
-    const buffered = this.video?.buffered;
+    return this.video ? this.getBufferedPosition(this.video) : 0;
+  }
+
+  private getBufferedPosition(video: HTMLVideoElement): number {
+    const buffered = video.buffered;
     if (!buffered || buffered.length === 0) return 0;
     try {
       return buffered.end(buffered.length - 1);
@@ -306,13 +310,25 @@ export class WebStreamVideoPlayer {
     this.emit('statusChange', { status, oldStatus, error });
   }
 
+  /**
+   * Performance optimization: Evaluate HTMLVideoElement properties (currentTime, duration,
+   * buffered) into local variables once per tick during high-frequency time update callbacks
+   * (every 500ms). Passing currentTime to computeLiveOffset eliminates duplicate DOM property
+   * queries on the HTMLVideoElement instance on every tick.
+   */
   private emitTimeUpdate = () => {
-    if (!this.video) return;
+    const video = this.video;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const duration = video.duration;
+    const isLive = !Number.isFinite(duration);
+
     this.emit('timeUpdate', {
-      currentTime: this.currentTime,
+      currentTime,
       currentLiveTimestamp: null,
-      currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
-      bufferedPosition: this.bufferedPosition,
+      currentOffsetFromLive: isLive ? this.computeLiveOffset(currentTime) : null,
+      bufferedPosition: this.getBufferedPosition(video),
     });
   };
 
@@ -335,9 +351,9 @@ export class WebStreamVideoPlayer {
     }
   }
 
-  private computeLiveOffset(): number | null {
-    if (this.hls?.liveSyncPosition != null && this.video) {
-      return Math.max(0, this.hls.liveSyncPosition - this.video.currentTime);
+  private computeLiveOffset(currentTime: number): number | null {
+    if (this.hls?.liveSyncPosition != null) {
+      return Math.max(0, this.hls.liveSyncPosition - currentTime);
     }
     return null;
   }
