@@ -306,12 +306,18 @@ export class WebStreamVideoPlayer {
     this.emit('statusChange', { status, oldStatus, error });
   }
 
+  /**
+   * Performance optimization: Pass pre-evaluated currentTime to computeLiveOffset
+   * to eliminate duplicate video.currentTime DOM property queries during high-frequency
+   * time update callbacks (every 500ms), while maintaining class encapsulation.
+   */
   private emitTimeUpdate = () => {
     if (!this.video) return;
+    const currentTime = this.currentTime;
     this.emit('timeUpdate', {
-      currentTime: this.currentTime,
+      currentTime,
       currentLiveTimestamp: null,
-      currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
+      currentOffsetFromLive: this.isLive ? this.computeLiveOffset(currentTime) : null,
       bufferedPosition: this.bufferedPosition,
     });
   };
@@ -335,9 +341,10 @@ export class WebStreamVideoPlayer {
     }
   }
 
-  private computeLiveOffset(): number | null {
+  private computeLiveOffset(currentTime?: number): number | null {
     if (this.hls?.liveSyncPosition != null && this.video) {
-      return Math.max(0, this.hls.liveSyncPosition - this.video.currentTime);
+      const cur = currentTime ?? this.video.currentTime;
+      return Math.max(0, this.hls.liveSyncPosition - cur);
     }
     return null;
   }
