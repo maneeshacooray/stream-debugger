@@ -120,7 +120,12 @@ export class WebStreamVideoPlayer {
   }
 
   get bufferedPosition(): number {
-    const buffered = this.video?.buffered;
+    if (!this.video) return 0;
+    return this.getBufferedPosition(this.video);
+  }
+
+  private getBufferedPosition(video: HTMLVideoElement): number {
+    const buffered = video.buffered;
     if (!buffered || buffered.length === 0) return 0;
     try {
       return buffered.end(buffered.length - 1);
@@ -306,13 +311,25 @@ export class WebStreamVideoPlayer {
     this.emit('statusChange', { status, oldStatus, error });
   }
 
+  /**
+   * Performance optimization: Evaluate HTMLVideoElement DOM properties once into
+   * local variables per tick in emitTimeUpdate, and pass currentTime directly to
+   * computeLiveOffset. This avoids redundant DOM getter queries on every 500ms tick.
+   */
   private emitTimeUpdate = () => {
-    if (!this.video) return;
+    const video = this.video;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const isLive = !Number.isFinite(video.duration);
+    const bufferedPosition = this.getBufferedPosition(video);
+    const currentOffsetFromLive = isLive ? this.computeLiveOffset(currentTime) : null;
+
     this.emit('timeUpdate', {
-      currentTime: this.currentTime,
+      currentTime,
       currentLiveTimestamp: null,
-      currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
-      bufferedPosition: this.bufferedPosition,
+      currentOffsetFromLive,
+      bufferedPosition,
     });
   };
 
@@ -335,9 +352,10 @@ export class WebStreamVideoPlayer {
     }
   }
 
-  private computeLiveOffset(): number | null {
+  private computeLiveOffset(currentTime?: number): number | null {
     if (this.hls?.liveSyncPosition != null && this.video) {
-      return Math.max(0, this.hls.liveSyncPosition - this.video.currentTime);
+      const time = currentTime ?? this.video.currentTime;
+      return Math.max(0, this.hls.liveSyncPosition - time);
     }
     return null;
   }
