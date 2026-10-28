@@ -116,7 +116,7 @@ export class WebStreamVideoPlayer {
   }
 
   get isLive(): boolean {
-    return !!this.video && !Number.isFinite(this.video.duration);
+    return this.video?.duration === Infinity;
   }
 
   get bufferedPosition(): number {
@@ -282,14 +282,17 @@ export class WebStreamVideoPlayer {
   private onLoadedMetadata = () => {
     this._cachedVideoTrack = undefined;
     this._cachedAudioTrack = undefined;
+    const duration = this.duration;
+    const videoTrack = this.videoTrack;
+    const audioTrack = this.audioTrack;
     this.emit('sourceLoad', {
       videoSource: this.uri,
-      duration: this.duration,
-      availableVideoTracks: this.videoTrack ? [this.videoTrack] : [],
+      duration,
+      availableVideoTracks: videoTrack ? [videoTrack] : [],
       availableSubtitleTracks: [],
-      availableAudioTracks: this.audioTrack ? [this.audioTrack] : [],
+      availableAudioTracks: audioTrack ? [audioTrack] : [],
     });
-    this.emit('videoTrackChange', { videoTrack: this.videoTrack });
+    this.emit('videoTrackChange', { videoTrack });
   };
 
   private onError = () => {
@@ -306,12 +309,28 @@ export class WebStreamVideoPlayer {
     this.emit('statusChange', { status, oldStatus, error });
   }
 
+  /**
+   * Performance optimization: Query video.currentTime once into a local variable per tick
+   * and reuse it when calculating live offset. Delegates isLive and bufferedPosition
+   * to getters to preserve class abstraction and maintainability while avoiding redundant
+   * DOM property accesses on high-frequency playback time update passes.
+   */
   private emitTimeUpdate = () => {
-    if (!this.video) return;
+    const video = this.video;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const isLive = this.isLive;
+
+    let currentOffsetFromLive: number | null = null;
+    if (isLive && this.hls?.liveSyncPosition != null) {
+      currentOffsetFromLive = Math.max(0, this.hls.liveSyncPosition - currentTime);
+    }
+
     this.emit('timeUpdate', {
-      currentTime: this.currentTime,
+      currentTime,
       currentLiveTimestamp: null,
-      currentOffsetFromLive: this.isLive ? this.computeLiveOffset() : null,
+      currentOffsetFromLive,
       bufferedPosition: this.bufferedPosition,
     });
   };
